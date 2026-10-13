@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Container version="2">
+  <Name>GameShelf</Name>
+  <Repository>jyh9521/gameshelf:0.1.2</Repository>
+  <Registry>https://hub.docker.com/r/jyh9521/gameshelf</Registry>
+  <Network>bridge</Network>
+  <MyIP></MyIP>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support></Support>
+  <Project></Project>
+  <Overview>个人游戏收藏管理。公开镜像 jyh9521/gameshelf:0.1.2（Linux/amd64），可直接从 Docker Hub 拉取。首次初始化凭据位于挂载目录的 setup-token 文件。数据库与媒体必须持久化到本地 appdata。</Overview>
+  <Category>Productivity:</Category>
+  <WebUI>http://[IP]:[PORT:3000]/</WebUI>
+  <Icon></Icon>
+  <ExtraParams></ExtraParams>
+  <PostArgs></PostArgs>
+  <Config Name="Web 界面" Target="3000" Default="3000" Mode="tcp" Description="选择未占用的宿主端口" Type="Port" Display="always" Required="true" Mask="false">3000</Config>
+  <Config Name="数据目录" Target="/data" Default="/mnt/user/appdata/gameshelf" Mode="rw" Description="服务器本地 appdata，不使用远程 SMB/NFS" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/gameshelf</Config>
+  <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="实际运行进程的用户 ID；现有数据也须有对应权限" Type="Variable" Display="always" Required="true" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="实际运行进程的组 ID" Type="Variable" Display="always" Required="true" Mask="false">100</Config>
+  <Config Name="访问地址" Target="APP_URL" Default="" Mode="" Description="反向代理时设置浏览器访问的完整地址" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="HTTPS Cookie" Target="SECURE_COOKIE" Default="false" Mode="" Description="HTTPS 代理时设为 true；局域网 HTTP 为 false" Type="Variable" Display="advanced" Required="true" Mask="false">false</Config>
+</Container>
+
+

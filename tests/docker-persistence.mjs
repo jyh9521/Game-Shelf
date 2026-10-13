@@ -1,0 +1,14 @@
+import assert from "node:assert/strict";
+import {readFileSync,writeFileSync} from "node:fs";
+const mode=process.argv[2];assert(["before","after"].includes(mode));
+const base=process.env.TEST_URL??"http://127.0.0.1:3100";
+const r=await fetch(`${base}/api/auth/login`,{method:"POST",headers:{"Content-Type":"application/json","x-gameshelf-request":"1"},body:JSON.stringify({username:"qa",password:"test-password-12345"})});
+assert.equal(r.status,200);const cookie=r.headers.get("set-cookie").split(";")[0];
+const response=await fetch(`${base}/api/backup`,{headers:{cookie}});assert.equal(response.status,200);
+const backup=await response.json();delete backup.exportedAt;
+for(const v of Object.values(backup))if(Array.isArray(v))v.sort((a,b)=>a.id.localeCompare(b.id));
+const file="engineering/docker-deploy/persistence-before.json";
+if(mode==="before")writeFileSync(file,JSON.stringify(backup,null,2));
+else assert.deepEqual(backup,JSON.parse(readFileSync(file,"utf8")));
+assert(backup.games.length>=2);assert(backup.items.length>=3);
+console.log(`PASS DOCKER_PERSISTENCE phase=${mode} games=${backup.games.length} items=${backup.items.length} ${mode==="after"?"recreated=identical":"snapshot=saved"}`);

@@ -1,0 +1,136 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String @id
+  username     String @unique
+  passwordHash String
+  sessions     Session[]
+  items        LibraryItem[]
+  profiles     UserGameProfile[]
+  imports      BackupImport[]
+}
+
+model Session {
+  tokenHash String @id
+  userId String
+  expiresAt DateTime
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([expiresAt])
+}
+
+model LoginAttempt {
+  key String @id
+  failures Int @default(0)
+  windowStart DateTime
+}
+
+model Platform {
+  id String @id
+  name String @unique
+  releases Release[]
+}
+
+model Store {
+  id String @id
+  name String @unique
+  items LibraryItem[]
+}
+
+model Game {
+  id String @id
+  title String
+  originalTitle String @default("")
+  localizedTitle String @default("")
+  searchText String
+  description String @default("")
+  developer String @default("")
+  publisher String @default("")
+  genre String @default("")
+  coverUrl String @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  releases Release[]
+  profiles UserGameProfile[]
+  @@index([title])
+  @@index([createdAt])
+}
+
+model Release {
+  id String @id
+  gameId String
+  platformId String
+  region String @default("")
+  releaseDate String @default("")
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  platform Platform @relation(fields: [platformId], references: [id])
+  editions Edition[]
+  contents LibraryItemContent[]
+  @@index([gameId, platformId])
+  @@unique([gameId, platformId, region, releaseDate])
+}
+
+model Edition {
+  id String @id
+  releaseId String
+  name String
+  release Release @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+  contents LibraryItemContent[]
+  @@unique([releaseId, name])
+}
+
+model LibraryItem {
+  id String @id
+  userId String
+  storeId String?
+  mediaType String
+  acquisitionType String
+  accessStatus String
+  sourceTotalSeconds Int?
+  manualTotalOverride Int?
+  manualExtraSeconds Int @default(0)
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id])
+  store Store? @relation(fields: [storeId], references: [id])
+  contents LibraryItemContent[]
+  @@index([userId, createdAt])
+}
+
+model LibraryItemContent {
+  id String @id
+  libraryItemId String
+  releaseId String
+  editionId String?
+  item LibraryItem @relation(fields: [libraryItemId], references: [id], onDelete: Cascade)
+  release Release @relation(fields: [releaseId], references: [id])
+  edition Edition? @relation(fields: [editionId], references: [id])
+  @@unique([libraryItemId, releaseId])
+}
+
+model UserGameProfile {
+  id String @id
+  userId String
+  gameId String
+  status String @default("UNPLAYED")
+  rating Int?
+  favorite Boolean @default(false)
+  memo String @default("")
+  overridesJson String @default("{}")
+  user User @relation(fields: [userId], references: [id])
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  @@unique([userId, gameId])
+  @@index([userId, status])
+}
+
+model BackupImport {
+  id String @id
+  userId String
+  importedAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id])
+}

@@ -1,0 +1,35 @@
+import {chromium,expect} from "@playwright/test";
+import assert from "node:assert/strict";
+const browser=await chromium.launch({channel:"chrome",headless:true});
+const errors=[];
+try{
+  const page=await browser.newPage({viewport:{width:1440,height:1000}});page.on("pageerror",e=>errors.push(e.message));
+  await page.goto("http://127.0.0.1:3103",{waitUntil:"networkidle"});
+  await page.locator('[name="username"]').fill("qa");await page.locator('[name="password"]').fill("core-test-password");await page.getByRole("button",{name:"登录游戏库",exact:true}).click();
+  await expect(page.locator(".game-card")).toHaveCount(3);
+  await page.getByLabel("列表排序").selectOption("title_asc");
+  await expect(page.locator(".game-card h2")).toHaveText(["Alpha","Middle","Zebra"]);
+  await page.getByLabel("筛选载体").selectOption("PHYSICAL");await expect(page.locator(".game-card")).toHaveCount(2);
+  await page.getByLabel("筛选获取方式").selectOption("FREE");await expect(page.getByRole("heading",{name:"没有符合条件的游戏"})).toBeVisible();
+  await page.getByRole("button",{name:"重置筛选"}).click();await expect(page.locator(".game-card")).toHaveCount(3);
+  await page.getByRole("heading",{name:"Zebra",exact:true}).click();
+  const row=page.locator(".owned-row").filter({hasText:"Nintendo Switch"});
+  await row.getByRole("button",{name:"修改版本"}).click();
+  const dialog=page.getByRole("dialog",{name:"修改发行版本",exact:true});
+  await expect(dialog.locator('[name="edition"]')).toHaveValue("Deluxe");
+  await dialog.locator('[name="releaseDate"]').fill("2023-02-29");await dialog.getByRole("button",{name:"保存版本"}).click();await expect(dialog.locator("p.error")).toContainText("有效");
+  await dialog.locator('[name="releaseDate"]').fill("2021-03");await dialog.locator('[name="region"]').fill("EU");await dialog.locator('[name="edition"]').fill("Collector");
+  await dialog.getByRole("button",{name:"保存版本"}).click();await expect(dialog).toHaveCount(0);
+  await expect(page.locator(".owned-row").filter({hasText:"Nintendo Switch"})).toContainText("Collector");
+  await expect(page.locator(".owned-row").filter({hasText:"Nintendo Switch"})).toContainText("2021-03");
+  await expect(page.locator(".owned-row").filter({hasText:"PlayStation 4"})).toContainText("Standard");
+  await page.screenshot({path:"engineering/core-update/detail-desktop.png",fullPage:true});
+  await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+  await page.screenshot({path:"engineering/core-update/detail-mobile.png",fullPage:true});
+  await page.locator('.detail-modal button[aria-label="关闭"]').click();
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+  await page.getByLabel("筛选访问状态").selectOption("EXPIRED");await expect(page.locator(".game-card h2")).toHaveText(["Middle"]);
+  await page.screenshot({path:"engineering/core-update/filters-mobile.png",fullPage:true});
+  assert.deepEqual(errors,[]);
+  console.log("PASS CORE_UI: version-edited; invalid-date=blocked; other-copy=unchanged; filters/reset/sort=verified; desktop/mobile=no-overflow; console-errors=0");
+}finally{await browser.close();}

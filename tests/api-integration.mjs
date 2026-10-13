@@ -1,0 +1,51 @@
+import assert from "node:assert/strict";
+import { readFileSync, writeFileSync } from "node:fs";
+const base=process.env.TEST_URL??"http://127.0.0.1:3100";
+const setupToken=/SETUP_TOKEN="([^"]+)"/.exec(readFileSync(".env","utf8"))[1];
+let session="";let checks=0;
+async function call(path,method="GET",data,expected=200,authenticated=true,header=true){
+  const r=await fetch(`${base}/api/${path}`,{method,headers:{...(authenticated&&session?{cookie:session}:{}),...(header?{"x-gameshelf-request":"1"}:{}),...(data===undefined?{}:{"content-type":"application/json"})},body:data===undefined?undefined:JSON.stringify(data)});
+  const value=await r.json();assert.equal(r.status,expected,`${method} ${path}: ${JSON.stringify(value)}`);checks++;
+  const c=r.headers.get("set-cookie");if(c)session=c.split(";")[0];return value;
+}
+assert.equal((await call("health")).status,"ok");
+await call("games","GET",undefined,401,false);
+await call("auth/setup","POST",{username:"qa",password:"test-password-12345",passwordConfirm:"test-password-12345",setupToken:"wrong"},403);
+await call("auth/setup","POST",{username:"qa",password:"test-password-12345",passwordConfirm:"test-password-12345",setupToken},201);
+await call("auth/setup","POST",{username:"qa",password:"test-password-12345",passwordConfirm:"test-password-12345",setupToken},409);
+await call("games","POST",{},403,true,false);
+const catalog=await call("catalog");assert(catalog.platforms.length>=12);checks++;
+const input={title:"QA 西风狂诗曲",originalTitle:"ＴＥＳＴ Zephyr",localizedTitle:"",developer:"Softmax",publisher:"测试发行商",genre:"JRPG",description:"测试简介",coverUrl:"",status:"PLAYING",rating:4,favorite:true,memo:"手动备注\n第二行",ownership:{platformId:"PC",storeId:"STEAM",mediaType:"DIGITAL",acquisitionType:"PURCHASE",accessStatus:"ACTIVE",manualTotalOverride:36000,manualExtraSeconds:0,releaseDate:"1999",region:"",edition:"Standard"}};
+await call("games","POST",{...input,ownership:{...input.ownership,platformId:"invalid"}},400);
+assert.equal((await call("games")).total,0);checks++;
+const game=await call("games","POST",input,201);
+assert.equal((await call("games?q=西风")).total,1);checks++;
+assert.equal((await call("games?q=test%20zephyr")).total,1);checks++;
+assert.equal((await call("games?status=UNPLAYED")).total,0);checks++;
+await call(`games/${game.id}/items`,"POST",{...input.ownership,platformId:"PS4",storeId:null,mediaType:"PHYSICAL",manualTotalOverride:null},201);
+let detail=await call(`games/${game.id}`);assert.equal(detail.releases.length,2);checks++;
+await call(`games/${game.id}/items`,"POST",{...input.ownership,platformId:"PS4",storeId:null,mediaType:"PHYSICAL",manualTotalOverride:null},201);
+detail=await call(`games/${game.id}`);assert.equal(detail.releases.length,2);assert.equal(detail.releases.find(r=>r.platformId==="PS4").contents.length,2);checks+=2;
+const {ownership,...fields}=input;
+await call(`games/${game.id}`,"PUT",{...fields,title:"QA 修订作品",description:"",memo:"保存后仍有备注"});
+detail=await call(`games/${game.id}`);assert.equal(detail.description,"");assert.equal(detail.profiles[0].memo,"保存后仍有备注");assert.match(detail.profiles[0].overridesJson,/MANUAL_OVERRIDE/);checks+=3;
+const backup=await call("backup");
+assert(!JSON.stringify(backup).includes("passwordHash"));assert(!JSON.stringify(backup).includes(setupToken));checks+=2;
+await call("backup/preview","POST",backup);
+await call("backup/restore","POST",backup,400);
+await call("backup/preview","POST",{...backup,schema_version:99},400);
+await call("backup/preview","POST",{...backup,releases:backup.releases.map(r=>({...r,gameId:"missing"}))},400);
+await call(`games/${game.id}`,"DELETE");
+assert.equal((await call("games")).total,0);checks++;
+await call("backup/restore","POST",backup);
+const restored=await call("backup");
+for(const field of ["platforms","stores","games","releases","editions","items","contents","profiles"]){assert.deepEqual(restored[field].sort((a,b)=>a.id.localeCompare(b.id)),backup[field].sort((a,b)=>a.id.localeCompare(b.id)));checks++;}
+const duplicate=await call("backup/restore","POST",backup);assert.equal(duplicate.duplicate,true);checks++;
+assert.equal((await call("games")).total,1);checks++;
+writeFileSync("engineering/api-backup.json",JSON.stringify(backup,null,2));
+await call("auth/logout","POST",{});
+await call("games","GET",undefined,401);
+await call("auth/login","POST",{username:"qa",password:"wrong-password-123"},401);
+await call("auth/login","POST",{username:"qa",password:"test-password-12345"});
+console.log(`PASS API_INTEGRATION checks=${checks} auth=verified rollback=transactional backup=roundtrip duplicate=no`);
+
