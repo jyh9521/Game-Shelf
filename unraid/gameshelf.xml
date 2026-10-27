@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Container version="2">
   <Name>GameShelf</Name>
-  <Repository>jyh9521/gameshelf:0.1.2</Repository>
+  <Repository>jyh9521/gameshelf:0.1.5</Repository>
   <Registry>https://hub.docker.com/r/jyh9521/gameshelf</Registry>
   <Network>bridge</Network>
   <MyIP></MyIP>
@@ -9,7 +9,7 @@
   <Privileged>false</Privileged>
   <Support></Support>
   <Project></Project>
-  <Overview>个人游戏收藏管理。公开镜像 jyh9521/gameshelf:0.1.2（Linux/amd64），可直接从 Docker Hub 拉取。首次初始化凭据位于挂载目录的 setup-token 文件。数据库与媒体必须持久化到本地 appdata。</Overview>
+  <Overview>个人游戏收藏管理。公开镜像 jyh9521/gameshelf:0.1.5（Linux/amd64），支持个人评分、类型与拥有版本发售年份筛选。首次初始化凭据位于挂载目录的 setup-token 文件。数据库与媒体必须持久化到本地 appdata。</Overview>
   <Category>Productivity:</Category>
   <WebUI>http://[IP]:[PORT:3000]/</WebUI>
   <Icon></Icon>

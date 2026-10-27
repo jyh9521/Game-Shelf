@@ -4,7 +4,7 @@ import { db, ready } from "@/lib/db";
 import { currentUser, newSession, cookie, hashPassword, verifyPassword, secureCompare, hashToken, sessionToken } from "@/lib/auth";
 import { createInput, gameInput, ownershipInput, releaseInput, defaultPlatforms, defaultStores, normalize } from "@/lib/domain";
 import { addOwnership, editContent, ownsGame, saveGame } from "@/lib/library";
-import { buildLibraryQuery } from "@/lib/library-query";
+import { buildLibraryQuery, buildLibraryFilterOptions } from "@/lib/library-query";
 import { backupSchema, validateReferences, exportBackup, restoreBackup } from "@/lib/backup";
 import { randomUUID } from "node:crypto";
 import { getSetupToken, withBootstrapLock } from "@/lib/bootstrap";
@@ -80,7 +80,10 @@ async function handle(req:NextRequest,context:{params:Promise<{path:string[]}>})
       const total=await db.game.count({where});
       const items=await db.game.findMany({where,orderBy,skip:(page-1)*24,take:24,
         include:{profiles:{where:{userId:user.id}},releases:{include:{platform:true,contents:{where:{item:{userId:user.id}},include:{item:{include:{store:true}},edition:true}}}}}});
-      return result({items,total,page:Math.floor(page),pages:Math.max(1,Math.ceil(total/24))});
+      // 候选来自当前用户的完整库，而不是当前页或当前筛选结果。
+      const genres=await db.game.groupBy({by:["genre"],where:{profiles:{some:{userId:user.id}}}});
+      const dates=await db.release.groupBy({by:["releaseDate"],where:{game:{profiles:{some:{userId:user.id}}},contents:{some:{item:{userId:user.id}}}}});
+      return result({items,total,page:Math.floor(page),pages:Math.max(1,Math.ceil(total/24)),filters:buildLibraryFilterOptions(genres,dates)});
     }
     if(key==="games" && method==="POST"){
       const input=createInput.parse(await body(req));const {ownership,...fields}=input;

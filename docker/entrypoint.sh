@@ -1,12 +1,20 @@
 #!/bin/sh
 set -eu
-# 只初始化新目录；现有目录权限由部署者明确维护，不递归改写整个挂载。
+# 仅修正应用自有文件；不递归改写挂载，不重置凭据或数据库。
 if [ "$(id -u)" = 0 ]; then
   case "${PUID}" in ''|*[!0-9]*) echo "PUID must be numeric" >&2; exit 1;; esac
   case "${PGID}" in ''|*[!0-9]*) echo "PGID must be numeric" >&2; exit 1;; esac
   if [ "$PUID" -eq 0 ]; then echo "PUID must identify a non-root user" >&2; exit 1; fi
   mkdir -p /data
   chown "${PUID}:${PGID}" /data
+  for file in /data/setup-token /data/gameshelf.db /data/gameshelf.db-wal /data/gameshelf.db-shm /data/gameshelf.db-journal; do
+    if [ -L "$file" ]; then echo "Application data file must not be a symbolic link: $file" >&2; exit 1; fi
+    if [ -e "$file" ]; then
+      if [ ! -f "$file" ]; then echo "Application data path must be a regular file: $file" >&2; exit 1; fi
+      chown "${PUID}:${PGID}" "$file"
+      chmod 600 "$file"
+    fi
+  done
   exec gosu "${PUID}:${PGID}" /entrypoint.sh "$@"
 fi
 if [ ! -w /data ]; then echo "/data must be writable by the configured UID/GID" >&2; exit 1; fi

@@ -1,7 +1,7 @@
 services:
   gameshelf:
     # Docker Hub 公开固定版本镜像；仍保留源码构建入口。
-    image: jyh9521/gameshelf:0.1.2
+    image: jyh9521/gameshelf:0.1.5
     build: .
     ports:
       - "${GAMESHELF_PORT:-3000}:3000"

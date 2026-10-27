@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState, useRef } from "react";
-import { librarySorts, librarySortLabels } from "@/lib/library-query";
+import { librarySorts, librarySortLabels, libraryRatings, type LibraryFilterOptions } from "@/lib/library-query";
+import packageInfo from "../../package.json";
 import { effectiveSeconds, statuses, mediaTypes, acquisitions, accessStatuses } from "@/lib/domain";
 type Catalog={platforms:{id:string;name:string}[];stores:{id:string;name:string}[]};
 type ContentEditor={id:string;platformId:string;releaseDate:string;region:string;edition:string};
@@ -33,6 +34,9 @@ export default function Shelf(){
   const [view,setView]=useState("library");const [games,setGames]=useState<Game[]>([]);
   const [total,setTotal]=useState(0);const [page,setPage]=useState(1);const [pages,setPages]=useState(1);
   const [q,setQ]=useState("");const [platform,setPlatform]=useState("");const [store,setStore]=useState("");const [status,setStatus]=useState("");const [favorite,setFavorite]=useState(false);
+  const [rating,setRating]=useState("");
+  const [genre,setGenre]=useState("");const [unclassified,setUnclassified]=useState(false);const [year,setYear]=useState("");
+  const [filterOptions,setFilterOptions]=useState<LibraryFilterOptions>({genres:[],years:[]});
   const [error,setError]=useState("");const [notice,setNotice]=useState("");const [busy,setBusy]=useState(false);const [loading,setLoading]=useState(false);
   const [editor,setEditor]=useState<Game|"new"|null>(null);const [detail,setDetail]=useState<Game|null>(null);
   const [itemEditor,setItemEditor]=useState<Item|null>(null);
@@ -46,9 +50,9 @@ export default function Shelf(){
     if(!auth?.user)return;
     const activeRequest=++requestId.current;
     setLoading(true);
-    try{const data=await api<{items:Game[];total:number;page:number;pages:number}>(`games?${new URLSearchParams({q,platform,store,status,favorite:String(favorite),mediaType,acquisitionType,accessStatus,sort,page:String(page)})}`);if(activeRequest!==requestId.current)return;setGames(data.items);setTotal(data.total);setPages(data.pages);setError("");if(page>data.pages)setPage(data.pages);}
+    try{const data=await api<{items:Game[];total:number;page:number;pages:number;filters:LibraryFilterOptions}>(`games?${new URLSearchParams({q,platform,store,status,rating,genre,unclassified:String(unclassified),year,favorite:String(favorite),mediaType,acquisitionType,accessStatus,sort,page:String(page)})}`);if(activeRequest!==requestId.current)return;setGames(data.items);setTotal(data.total);setPages(data.pages);setFilterOptions(data.filters);setError("");if(page>data.pages)setPage(data.pages);}
     catch(e){if(activeRequest===requestId.current)setError((e as Error).message);}finally{if(activeRequest===requestId.current)setLoading(false);}
-  },[auth,q,platform,store,status,favorite,mediaType,acquisitionType,accessStatus,sort,page]);
+  },[auth,q,platform,store,status,rating,genre,unclassified,year,favorite,mediaType,acquisitionType,accessStatus,sort,page]);
   useEffect(()=>{if(auth?.user){api<Catalog>("catalog").then(setCatalog).catch(e=>setError(e.message));}},[auth]);
   useEffect(()=>{const timer=setTimeout(()=>void reload(),220);return ()=>clearTimeout(timer);},[reload]);
   async function run(action:()=>Promise<void>){setBusy(true);setError("");setNotice("");try{await action();}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
@@ -74,7 +78,7 @@ export default function Shelf(){
     <button className={view==="platforms"?"active":""} onClick={()=>setView("platforms")}><span>◇</span>平台管理</button>
     <button className={view==="backup"?"active":""} onClick={()=>setView("backup")}><span>↗</span>备份与恢复</button>
   </nav><div className="sidebar-note"><span className="live-dot"/> 自托管 · 数据由你掌握<p>核心库独立运行<br/>账号同步将在后续版本加入</p></div><div className="user-box"><span className="avatar">{auth.user.username.slice(0,1).toUpperCase()}</span><div><strong>{auth.user.username}</strong><small>个人管理员</small></div><button title="退出登录" aria-label="退出登录" onClick={()=>void run(async()=>{await api("auth/logout","POST",{});setGames([]);await refreshAuth();})}>↪</button></div></aside>
-    <main className="main-content"><header className="topbar"><span>个人空间 <b>/</b> {view==="library"?"游戏库":view==="platforms"?"平台管理":"备份与恢复"}</span><span className="version">LOCAL-FIRST / v0.1</span></header>
+    <main className="main-content"><header className="topbar"><span>个人空间 <b>/</b> {view==="library"?"游戏库":view==="platforms"?"平台管理":"备份与恢复"}</span><span className="version">LOCAL-FIRST / v{packageInfo.version}</span></header>
     {error&&<div className="banner error" role="alert">{error}<button onClick={()=>setError("")}>×</button></div>}{notice&&<div className="banner success" role="status">{notice}<button onClick={()=>setNotice("")}>×</button></div>}
     {view==="library"&&<><section className="page-heading"><div><span className="eyebrow">THE ADVENTURE CONTINUES</span><h1>每一款游戏，<br className="mobile-only"/>都有自己的位置<span>.</span></h1><p>数字收藏、实体珍藏与游玩记录，在这里相遇。</p></div><button className="primary" onClick={()=>setEditor("new")}>＋ 登记游戏</button></section>
       <div className="library-intro"><div><strong>我的游戏库</strong><span className="count">{total}</span></div><span>{librarySortLabels[sort]} · 作品视图</span></div>
@@ -88,9 +92,20 @@ export default function Shelf(){
       <select aria-label="筛选获取方式" value={acquisitionType} onChange={e=>{setAcquisitionType(e.target.value);setPage(1);}}><option value="">全部获取方式</option><Options values={acquisitions}/></select>
       <select aria-label="筛选访问状态" value={accessStatus} onChange={e=>{setAccessStatus(e.target.value);setPage(1);}}><option value="">全部访问状态</option><Options values={accessStatuses}/></select>
       <select aria-label="列表排序" value={sort} onChange={e=>{setSort(e.target.value as typeof sort);setPage(1);}}>{librarySorts.map(v=><option key={v} value={v}>{librarySortLabels[v]}</option>)}</select>
-      <button onClick={()=>{setQ("");setPlatform("");setStore("");setStatus("");setFavorite(false);setMediaType("");setAcquisitionType("");setAccessStatus("");setSort("added_desc");setPage(1);}}>重置筛选</button></section>
+      <button onClick={()=>{setQ("");setPlatform("");setStore("");setStatus("");setRating("");setGenre("");setUnclassified(false);setYear("");setFavorite(false);setMediaType("");setAcquisitionType("");setAccessStatus("");setSort("added_desc");setPage(1);}}>重置筛选</button></section>
+      <section className="filters" role="group" aria-label="筛选个人评分"><span>个人评分</span>{["",...libraryRatings].map(value=><button key={value} className={rating===value?"favorite-filter selected":"favorite-filter"} aria-pressed={rating===value} onClick={()=>{setRating(value);setPage(1);}}>{value===""?"全部评分":value==="unrated"?"未评分":`${value} 星`}</button>)}</section>
+      <section className="metadata-filters" aria-label="类型与年份筛选">
+        <fieldset className="choice-filter" aria-label="筛选游戏类型"><legend>游戏类型</legend><div className="filter-choices">
+          <button aria-pressed={!genre&&!unclassified} className={!genre&&!unclassified?"selected":""} onClick={()=>{setGenre("");setUnclassified(false);setPage(1);}}>全部类型</button>
+          <button aria-pressed={unclassified} className={unclassified?"selected":""} onClick={()=>{setGenre("");setUnclassified(true);setPage(1);}}>未分类</button>
+          {[...new Set([...filterOptions.genres,...(genre?[genre]:[])])].map(value=><button key={value} title={value} aria-label={`类型：${value}`} aria-pressed={genre===value&&!unclassified} className={genre===value&&!unclassified?"selected":""} onClick={()=>{setGenre(value);setUnclassified(false);setPage(1);}}>{value}</button>)}
+        </div></fieldset>
+        <fieldset className="choice-filter" aria-label="筛选拥有版本发售年份"><legend>拥有版本发售年份</legend><div className="filter-choices">
+          {["","unknown",...new Set([...filterOptions.years,...(year&&year!=="unknown"?[year]:[])])].map(value=><button key={value} aria-pressed={year===value} className={year===value?"selected":""} onClick={()=>{setYear(value);setPage(1);}}>{value===""?"全部年份":value==="unknown"?"年份未知":value}</button>)}
+        </div><p className="muted">按你拥有的发行版本匹配，与平台、商店及载体条件对应同一份记录。</p></fieldset>
+      </section>
       {loading&&<p className="muted" role="status">正在读取游戏库…</p>}
-      {!loading&&games.length===0?<section className="empty"><div className="empty-mark">▦</div><h2>{q||platform||store||status||favorite||mediaType||acquisitionType||accessStatus?"没有符合条件的游戏":"从你的第一款游戏开始"}</h2><p>手动登记你拥有的版本，不依赖任何游戏平台接口。</p><button className="primary" onClick={()=>setEditor("new")}>＋ 登记游戏</button></section>:<section className="game-grid">{games.map(g=><button className="game-card" key={g.id} onClick={()=>void run(async()=>setDetail(await api<Game>(`games/${g.id}`)))}>
+      {!loading&&games.length===0?<section className="empty"><div className="empty-mark">▦</div><h2>{q||platform||store||status||rating||genre||unclassified||year||favorite||mediaType||acquisitionType||accessStatus?"没有符合条件的游戏":"从你的第一款游戏开始"}</h2><p>手动登记你拥有的版本，不依赖任何游戏平台接口。</p><button className="primary" onClick={()=>setEditor("new")}>＋ 登记游戏</button></section>:<section className="game-grid">{games.map(g=><button className="game-card" key={g.id} onClick={()=>void run(async()=>setDetail(await api<Game>(`games/${g.id}`)))}>
         <div className="cover-wrap"><Cover game={g}/><span className={`status-badge status-${g.profiles[0]?.status}`}>{labels[g.profiles[0]?.status]}</span>{g.profiles[0]?.favorite&&<span className="favorite-star">★</span>}</div>
         <div className="card-text"><h2>{g.localizedTitle||g.title}</h2><p>{[...new Set(g.releases.filter(r=>r.contents.length).map(r=>r.platform.name))].join(" · ")||"暂无拥有记录"}</p><div className="card-bottom"><span>{g.genre||"未分类"}</span><span className="rating">{g.profiles[0]?.rating?"★".repeat(g.profiles[0].rating):"未评分"}</span></div></div></button>)}</section>}
       <div className="pagination"><span>共 {total} 款作品 · 第 {page} / {pages} 页</span><div><button disabled={page<=1||loading} onClick={()=>setPage(page-1)}>上一页</button><button disabled={page>=pages||loading} onClick={()=>setPage(page+1)}>下一页</button></div></div></>}
