@@ -1,6 +1,6 @@
 {
   "name": "gameshelf",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "private": true,
   "scripts": {
     "dev": "next dev --hostname 127.0.0.1",
@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
     "test:weekly": "node tests/weekly-smoke.mjs",
-    "test:release": "node tests/release-0.1.5.mjs"
+    "test:relations": "node tests/relations-smoke.mjs",
+    "test:release": "node tests/release-0.1.6.mjs"
   },
   "dependencies": {
     "@prisma/client": "6.19.3",

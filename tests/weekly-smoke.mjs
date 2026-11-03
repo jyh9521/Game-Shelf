@@ -165,7 +165,7 @@ try{
 
     for(const game of filler)await call(`games/${game.id}`,"DELETE");
     assert.ok(!(await call("games")).filters.genres.includes("分页 QA"));
-    const backup=await call("backup");assert.equal(backup.schema_version,1);
+    const backup=await call("backup");assert.equal(backup.schema_version,2);
     assert.ok(!/passwordHash|tokenHash|setupToken/.test(JSON.stringify(backup)));
     writeFileSync(resolve(dir,"demo-backup.json"),JSON.stringify(backup,null,2));
     for(const game of backup.games)await call(`games/${game.id}`,"DELETE");
@@ -195,7 +195,7 @@ try{
     assert.ok(!own.genres.includes("PRIVATE"));assert.ok(!own.years.includes("1899"));assert.ok(!own.years.includes("1901"));
     await matches({year:"1901"},[]);await matches({genre:"PRIVATE"},[]);
     cookie="";await call("games?genre=RPG&year=2005","GET",undefined,401);
-    console.log(`MODIFIED PASS HTTP=${checks}; UI=desktop,mobile,pagination-reset,combined,empty,edit-refresh; backup=v1-roundtrip; isolation=pass; external-requests=0; personal-db=untouched`);
+    console.log(`MODIFIED PASS HTTP=${checks}; UI=desktop,mobile,pagination-reset,combined,empty,edit-refresh; backup=v2-roundtrip; isolation=pass; external-requests=0; personal-db=untouched`);
   }
   console.log(`QA_ARTIFACTS=${dir}`);
 }finally{

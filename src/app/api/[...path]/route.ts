@@ -8,6 +8,8 @@ import { buildLibraryQuery, buildLibraryFilterOptions } from "@/lib/library-quer
 import { backupSchema, validateReferences, exportBackup, restoreBackup } from "@/lib/backup";
 import { randomUUID } from "node:crypto";
 import { getSetupToken, withBootstrapLock } from "@/lib/bootstrap";
+import { relationInput, relationEditInput, RelationError } from "@/lib/relation-domain";
+import { listRelations, createRelation, changeRelation } from "@/lib/relations";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
 class HttpError extends Error { constructor(public status:number,message:string){super(message);} }
@@ -105,6 +107,9 @@ async function handle(req:NextRequest,context:{params:Promise<{path:string[]}>})
           const contents=await tx.libraryItemContent.findMany({where:{release:{gameId:id},item:{userId:user.id}}});
           await tx.libraryItemContent.deleteMany({where:{id:{in:contents.map(c=>c.id)}}});
           await tx.libraryItem.deleteMany({where:{userId:user.id,contents:{none:{}}}});
+          const relationshipWhere={userId:user.id,OR:[{sourceGameId:id},{targetGameId:id}]};
+          await tx.gameRelation.deleteMany({where:relationshipWhere});
+          await tx.gameRelationEvent.deleteMany({where:relationshipWhere});
           await tx.userGameProfile.delete({where:{userId_gameId:{userId:user.id,gameId:id}}});
           if(!await tx.userGameProfile.count({where:{gameId:id}}))await tx.game.delete({where:{id}});
         });return result({ok:true});
@@ -112,6 +117,14 @@ async function handle(req:NextRequest,context:{params:Promise<{path:string[]}>})
       if(path.length===3 && path[2]==="items" && method==="POST"){
         const input=ownershipInput.parse(await body(req));return result(await db.$transaction(tx=>addOwnership(tx,user.id,id,input)),201);
       }
+      if(path.length===3 && path[2]==="relations"){
+        if(method==="GET")return result(await listRelations(user.id,id));
+        if(method==="POST")return result(await createRelation(user.id,id,relationInput.parse(await body(req))),201);
+      }
+    }
+    if(path[0]==="relations" && path.length===2){
+      if(method==="PUT")return result(await changeRelation(user.id,path[1],relationEditInput.parse(await body(req))));
+      if(method==="DELETE")return result(await changeRelation(user.id,path[1],null));
     }
     if(path[0]==="contents" && path.length===2 && method==="PUT"){
       const input=releaseInput.parse(await body(req));
@@ -130,13 +143,14 @@ async function handle(req:NextRequest,context:{params:Promise<{path:string[]}>})
     }
     if(key==="backup" && method==="GET")return result(await exportBackup(user.id),200,{"Content-Disposition":`attachment; filename="gameshelf-${new Date().toISOString().slice(0,10)}.json"`});
     if(key==="backup/preview" && method==="POST"){
-      const b=backupSchema.parse(await body(req));validateReferences(b);
-      return result({games:b.games.length,items:b.items.length,empty:await db.game.count()===0});
+      const raw=await body(req),b=backupSchema.parse(raw);validateReferences(b);
+      return result({games:b.games.length,items:b.items.length,relations:b.relations.length,relationHistory:b.relationHistory.length,schemaVersion:b.schema_version,migratedFrom:raw.schema_version===1?1:null,empty:await db.game.count()===0});
     }
     if(key==="backup/restore" && method==="POST")return result(await restoreBackup(backupSchema.parse(await body(req)),user.id));
     throw new HttpError(404,"接口不存在");
   }catch(error){
     if(error instanceof HttpError)return result({error:error.message},error.status);
+    if(error instanceof RelationError)return result({error:error.message},error.status);
     if(error instanceof z.ZodError)return result({error:"数据校验失败",details:error.issues.map(i=>`${i.path.join(".")}: ${i.message}`)},400);
     if(error instanceof Error && /平台不存在|商店不存在|恢复要求空库|悬空引用|重复|Edition 不属于|缺少/.test(error.message))return result({error:error.message},400);
     console.error("API failure",error instanceof Error?error.name:"unknown");return result({error:"操作失败，请检查输入或服务器状态"},500);

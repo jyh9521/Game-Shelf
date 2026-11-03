@@ -7,6 +7,7 @@ test("发布版本在 package、锁文件、Compose 与 Unraid 中一致",()=>{
   const lock=JSON.parse(readFileSync("package-lock.json","utf8"));
   assert.match(pkg.version,/^\d+\.\d+\.\d+$/);
   assert.equal(lock.version,pkg.version);assert.equal(lock.packages[""].version,pkg.version);
+  assert.equal(pkg.scripts["test:release"],`node tests/release-${pkg.version}.mjs`);
   const image=`jyh9521/gameshelf:${pkg.version}`;
   assert.ok(readFileSync("compose.yaml","utf8").split(/\r?\n/).some(line=>line.trim()===`image: ${image}`));
   assert.ok(readFileSync("unraid/gameshelf.xml","utf8").includes(`<Repository>${image}</Repository>`));

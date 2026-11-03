@@ -2,10 +2,11 @@ import { z } from "zod";
 import { db } from "./db";
 import { gameInput, ownershipInput, date, statuses, normalize } from "./domain";
 import { hashToken } from "./auth";
+import { relationRecord, relationEventRecord, validateRelationGraph, validateRelationHistory } from "./relation-domain";
 const id = z.string().min(1).max(100);
 const timestamp = z.iso.datetime();
 const nullableSeconds = z.number().int().min(0).max(2147483647).nullable();
-export const backupSchema = z.object({
+const backupV1 = z.object({
   format: z.literal("gameshelf"), schema_version: z.literal(1), exportedAt: timestamp,
   platforms: z.array(z.object({ id, name: z.string().min(1).max(120) }).strict()).max(1000),
   stores: z.array(z.object({ id, name: z.string().min(1).max(120) }).strict()).max(1000),
@@ -18,10 +19,19 @@ export const backupSchema = z.object({
     try { const o=JSON.parse(s); return o && !Array.isArray(o) && typeof o === "object" && Object.values(o).every(v=> v && typeof v==="object" && (v as {mode?:string}).mode==="MANUAL_OVERRIDE"); } catch { return false; }
   })}).strict()).max(100000)
 }).strict();
+const backupV2 = backupV1.extend({
+  schema_version: z.literal(2),
+  relations: z.array(relationRecord).max(300000),
+  relationHistory: z.array(relationEventRecord).max(300000)
+}).strict();
+// Read v1 without guessing relationships. All new exports use the explicit v2 format.
+export const backupSchema = z.discriminatedUnion("schema_version", [backupV1, backupV2]).transform(b =>
+  b.schema_version === 1 ? { ...b, schema_version: 2 as const, relations: [], relationHistory: [] } : b
+);
 export type Backup = z.infer<typeof backupSchema>;
 export function validateReferences(b: Backup) {
   const sets = new Map<string, Set<string>>();
-  for (const name of ["platforms","stores","games","releases","editions","items","contents","profiles"] as const) {
+  for (const name of ["platforms","stores","games","releases","editions","items","contents","profiles","relations","relationHistory"] as const) {
     const ids = b[name].map(v=>v.id);
     if (new Set(ids).size!==ids.length) throw new Error(`${name} 存在重复 ID`);
     sets.set(name,new Set(ids));
@@ -46,6 +56,14 @@ export function validateReferences(b: Backup) {
   const populatedItems=new Set(b.contents.map(c=>c.libraryItemId));
   for(const i of b.items) if(!populatedItems.has(i.id)) throw new Error("库条目缺少内容");
   for(const c of b.contents) if(!profiles.has(releaseMap.get(c.releaseId)!)) throw new Error("库内容缺少个人档案");
+  for (const relation of [...b.relations, ...b.relationHistory]) {
+    for (const gameId of [relation.sourceGameId, relation.targetGameId]) {
+      ref("games", gameId);
+      if (!profiles.has(gameId)) throw new Error("作品关系缺少个人档案");
+    }
+  }
+  validateRelationGraph(b.relations);
+  validateRelationHistory(b.relations, b.relationHistory);
 }
 export async function exportBackup(userId: string): Promise<Backup> {
   // 同一事务取得一致性快照，不包含管理员密码、会话或认证配置。
@@ -57,11 +75,16 @@ export async function exportBackup(userId: string): Promise<Backup> {
     const editions=await tx.edition.findMany({where:{releaseId:{in:releases.map(r=>r.id)}}});
     const items=await tx.libraryItem.findMany({where:{userId}});
     const contents=await tx.libraryItemContent.findMany({where:{libraryItemId:{in:items.map(i=>i.id)}}});
-    return backupSchema.parse({format:"gameshelf",schema_version:1,exportedAt:new Date().toISOString(),
+    const relationWhere = { userId, sourceGameId: { in: gameIds }, targetGameId: { in: gameIds } };
+    const relations = await tx.gameRelation.findMany({ where: relationWhere });
+    const relationHistory = await tx.gameRelationEvent.findMany({ where: relationWhere });
+    return backupSchema.parse({format:"gameshelf",schema_version:2,exportedAt:new Date().toISOString(),
       platforms:await tx.platform.findMany(),stores:await tx.store.findMany(),
       games:games.map(({searchText,...g})=>({...g,createdAt:g.createdAt.toISOString(),updatedAt:g.updatedAt.toISOString()})),
       releases,editions,items:items.map(({userId,...i})=>({...i,createdAt:i.createdAt.toISOString()})),
-      contents,profiles:profiles.map(({userId,...p})=>p)});
+      contents,profiles:profiles.map(({userId,...p})=>p),
+      relations:relations.map(({userId,...r})=>({...r,createdAt:r.createdAt.toISOString(),updatedAt:r.updatedAt.toISOString()})),
+      relationHistory:relationHistory.map(({userId,...e})=>({...e,createdAt:e.createdAt.toISOString()}))});
   });
 }
 export async function restoreBackup(b: Backup,userId:string) {
@@ -73,8 +96,13 @@ export async function restoreBackup(b: Backup,userId:string) {
     return value;
   };
   const importId=hashToken(userId+JSON.stringify(canonical({...b,exportedAt:""})));
+  const compatibleIds = [importId];
+  if (!b.relations.length && !b.relationHistory.length) {
+    const { relations, relationHistory, ...legacy } = b;
+    compatibleIds.push(hashToken(userId+JSON.stringify(canonical({...legacy,schema_version:1,exportedAt:""}))));
+  }
   return db.$transaction(async tx=>{
-    if(await tx.backupImport.findUnique({where:{id:importId}})) return {duplicate:true,games:0,items:0};
+    if(await tx.backupImport.findFirst({where:{id:{in:compatibleIds},userId}})) return {duplicate:true,games:0,items:0,relations:0};
     if(await tx.game.count() || await tx.libraryItem.count()) throw new Error("恢复要求空库，请先导出当前数据或使用新实例");
     await tx.platform.deleteMany();await tx.store.deleteMany();
     await tx.platform.createMany({data:b.platforms});await tx.store.createMany({data:b.stores});
@@ -83,7 +111,9 @@ export async function restoreBackup(b: Backup,userId:string) {
     await tx.libraryItem.createMany({data:b.items.map(i=>({...i,userId}))});
     await tx.libraryItemContent.createMany({data:b.contents});
     await tx.userGameProfile.createMany({data:b.profiles.map(p=>({...p,userId}))});
+    await tx.gameRelation.createMany({data:b.relations.map(r=>({...r,userId}))});
+    await tx.gameRelationEvent.createMany({data:b.relationHistory.map(e=>({...e,userId}))});
     await tx.backupImport.create({data:{id:importId,userId}});
-    return {duplicate:false,games:b.games.length,items:b.items.length};
+    return {duplicate:false,games:b.games.length,items:b.items.length,relations:b.relations.length};
   },{timeout:30000});
 }

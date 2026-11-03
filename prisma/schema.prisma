@@ -15,6 +15,8 @@ model User {
   items        LibraryItem[]
   profiles     UserGameProfile[]
   imports      BackupImport[]
+  gameRelations GameRelation[]
+  relationEvents GameRelationEvent[]
 }
 
 model Session {
@@ -58,6 +60,10 @@ model Game {
   updatedAt DateTime @updatedAt
   releases Release[]
   profiles UserGameProfile[]
+  relationsFrom GameRelation[] @relation("RelationSource")
+  relationsTo GameRelation[] @relation("RelationTarget")
+  eventsFrom GameRelationEvent[] @relation("EventSource")
+  eventsTo GameRelationEvent[] @relation("EventTarget")
   @@index([title])
   @@index([createdAt])
 }
@@ -133,4 +139,42 @@ model BackupImport {
   userId String
   importedAt DateTime @default(now())
   user User @relation(fields: [userId], references: [id])
+}
+
+// Manual relationship judgments belong to the user, not shared Game metadata.
+model GameRelation {
+  id String @id
+  userId String
+  sourceGameId String
+  targetGameId String
+  type String
+  note String
+  revision Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  source Game @relation("RelationSource", fields: [sourceGameId], references: [id], onDelete: Cascade)
+  target Game @relation("RelationTarget", fields: [targetGameId], references: [id], onDelete: Cascade)
+  @@unique([userId, sourceGameId, targetGameId])
+  @@index([userId, targetGameId])
+}
+
+// No FK to GameRelation: removing a link must retain its judgment history.
+model GameRelationEvent {
+  id String @id
+  userId String
+  relationId String
+  sourceGameId String
+  targetGameId String
+  action String
+  type String
+  note String
+  revision Int
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  source Game @relation("EventSource", fields: [sourceGameId], references: [id], onDelete: Cascade)
+  target Game @relation("EventTarget", fields: [targetGameId], references: [id], onDelete: Cascade)
+  @@unique([userId, relationId, revision])
+  @@index([userId, sourceGameId, createdAt])
+  @@index([userId, targetGameId, createdAt])
 }
