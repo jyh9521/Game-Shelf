@@ -44,7 +44,8 @@ export const createGameInput = createInput.extend(selectionInput);
 export const updateGameInput = gameInput.extend({ ...selectionInput, revision: revision.optional() });
 export const unlockInput = z.object({ field, revision }).strict();
 export const searchInput = z.object({ provider, query: z.string().trim().min(1).max(150) }).strict();
-export const previewInput = z.object({ provider, id: externalId }).strict();
+export const previewInput = z.object({ provider, id: externalId, page: z.number().int().min(0).max(2147483647).optional() }).strict()
+  .refine(p => p.page === undefined || p.provider === "steamgriddb", { path: ["page"], message: "只有 SteamGridDB 封面支持分页。" });
 export type Selection = z.infer<typeof chosen>;
 
 export const sourceRecord = z.object({
@@ -82,6 +83,8 @@ export type FieldReport = { revision: number; fields: FieldState[]; history: Fie
 export type SearchHit = { id: string; title: string; platforms: string[]; date?: string; kind?: string; region?: string };
 export type Candidate = { provider: Provider; externalId: string; fields: Partial<Metadata>; collectedAt: string };
 export type Preview = { candidate: Candidate; token: string; image?: { thumbnail: string; width?: number; height?: number } };
+export type CoverPagination = { page: number; pageSize: number; totalPages: number | null; hasNext: boolean };
+export type PreviewResult = { items: Preview[]; pagination?: CoverPagination };
 export type ProviderStatus = { id: Provider; enabled: boolean };
 
 export function metadataOf(value: Metadata): Metadata {

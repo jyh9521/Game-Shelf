@@ -25,6 +25,17 @@ const zelda = {
   cover: "https://cdn2.steamgriddb.com/grid/8fff7c872b733893a1a891be7c26c18c.png",
   thumb: "https://cdn2.steamgriddb.com/thumb/8fff7c872b733893a1a891be7c26c18c.jpg"
 };
+const coverGallery = {
+  title: "QA 竖版封面分页", id: "26001", emptyId: "26002",
+  grids: Array.from({ length: 64 }, (_, i) => ({
+    id: 260100 + i, width: 660, height: 930,
+    url: "https://cdn2.steamgriddb.com/grid/gallery-" + (i + 1) + ".png",
+    thumb: "https://cdn2.steamgriddb.com/thumb/gallery-" + (i + 1) + ".jpg",
+    // One rejected result on page 2 and an entirely filtered page 3 must
+    // not hide the subsequent pages.
+    humor: i === 12 || i >= 24 && i < 36
+  }))
+};
 const ports = { PC: "PC", SS: "Sega Saturn", PS5: "PlayStation 5" };
 
 /** @param {{ revokeOnce?: boolean, log?: (path: string) => void }} [options] */
@@ -116,15 +127,27 @@ function fixture({ revokeOnce = false, log = () => {} } = {}) {
     if (u.hostname === "www.steamgriddb.com") {
       assert.equal(headers.get("Authorization"), "Bearer " + env.STEAMGRIDDB_API_KEY);
       if (u.pathname.startsWith("/api/v2/search/autocomplete/")) {
-        if (decodeURIComponent(u.pathname.split("/").at(-1)) === zelda.title) {
+        const query = decodeURIComponent(u.pathname.split("/").at(-1));
+        if (query === zelda.title) {
           return json({ success: true, data: [{ id: 21202, name: zelda.title }, { id: 5532594, name: zelda.title }] });
         }
+        if (query === coverGallery.title) return json({ success: true, data: [
+          { id: Number(coverGallery.id), name: coverGallery.title }, { id: Number(coverGallery.emptyId), name: "QA 无封面版本" }
+        ] });
         return json({ success: true, data: [{ id: 501, name: title, verified: true }] });
       }
-      assert.ok(["/api/v2/grids/game/501", "/api/v2/grids/game/21202", "/api/v2/grids/game/5532594"].includes(u.pathname));
+      const gameId = u.pathname.split("/").at(-1);
+      assert.equal(u.pathname, "/api/v2/grids/game/" + gameId);
+      assert.ok(["501", zelda.id, "5532594", coverGallery.id, coverGallery.emptyId].includes(gameId));
       assert.equal(params.get("types"), "static"); assert.equal(params.get("nsfw"), "false");
       assert.equal(params.get("epilepsy"), "false"); assert.equal(params.get("humor"), "false");
       assert.equal(params.get("dimensions"), "600x900,342x482,660x930");
+      if (gameId === coverGallery.id || gameId === coverGallery.emptyId) {
+        const page = Number(params.get("page") ?? 0), limit = Number(params.get("limit") ?? 50);
+        assert.ok(Number.isSafeInteger(page) && page >= 0 && Number.isInteger(limit) && limit > 0 && limit <= 50);
+        const grids = gameId === coverGallery.id ? coverGallery.grids : [];
+        return json({ success: true, page, limit, total: grids.length, data: grids.slice(page * limit, (page + 1) * limit) });
+      }
       if (u.pathname.endsWith("/5532594")) return json({ success: true, data: [] });
       if (u.pathname.endsWith("/21202")) return json({ success: true, data: [
         { id: 787839, width: 600, height: 900, url: zelda.cover, thumb: zelda.thumb },
@@ -153,4 +176,4 @@ if (process.env.GAMESHELF_QA_PROVIDER_LOG) {
     return remote(input, init);
   };
 }
-module.exports = { fixture, env, title, coverUrl, thumbUrl, zelda };
+module.exports = { fixture, env, title, coverUrl, thumbUrl, zelda, coverGallery };

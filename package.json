@@ -1,6 +1,6 @@
 {
   "name": "gameshelf",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "private": true,
   "scripts": {
     "dev": "next dev --hostname 127.0.0.1",
@@ -14,7 +14,8 @@
     "test:relations": "node tests/relations-smoke.mjs",
     "test:metadata": "node tests/metadata-smoke.mjs",
     "test:cover-platforms": "node tests/cover-platforms-smoke.mjs",
-    "test:release": "node tests/release-0.1.8.mjs"
+    "test:cover-pagination": "node tests/cover-pagination-smoke.mjs",
+    "test:release": "node tests/release-0.1.9.mjs"
   },
   "dependencies": {
     "@prisma/client": "6.19.3",

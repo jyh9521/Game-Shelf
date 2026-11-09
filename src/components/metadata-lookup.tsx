@@ -2,10 +2,21 @@
 
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/client-api";
-import { fieldLabels, metadataFields, providerLabels, providerLink, type Metadata, type MetadataField, type Preview, type Provider, type ProviderStatus, type SearchHit } from "@/lib/metadata-domain";
+import { fieldLabels, metadataFields, providerLabels, providerLink, type CoverPagination, type Metadata, type MetadataField, type Preview, type PreviewResult, type Provider, type ProviderStatus, type SearchHit } from "@/lib/metadata-domain";
 
 export function SourceLink({ provider, id }: { provider: Provider; id?: string }) {
   return <a href={providerLink(provider, id)} target="_blank" rel="noreferrer">{providerLabels[provider]}</a>;
+}
+
+function CoverPager({ pagination, disabled, bottom = false, onChange }: {
+  pagination: CoverPagination; disabled: boolean; bottom?: boolean; onChange: (page: number) => void;
+}) {
+  const { page, totalPages, hasNext } = pagination;
+  return <nav className="metadata-cover-pagination" aria-label={bottom ? "封面分页（底部）" : "封面分页（顶部）"}>
+    <button type="button" disabled={disabled || page === 0} onClick={() => onChange(page - 1)}>上一页</button>
+    <span aria-live={bottom ? undefined : "polite"}>第 {page + 1}{totalPages !== null && totalPages > page ? " / " + totalPages : ""} 页</span>
+    <button type="button" disabled={disabled || !hasNext} onClick={() => onChange(page + 1)}>下一页</button>
+  </nav>;
 }
 
 export function MetadataLookup({ title, draft, protectedFields, disabled, onStage }: {
@@ -16,17 +27,27 @@ export function MetadataLookup({ title, draft, protectedFields, disabled, onStag
   const [provider, setProvider] = useState<Provider | "">("");
   const [query, setQuery] = useState<string | null>(null);
   const [hits, setHits] = useState<SearchHit[] | null>(null);
-  const [previews, setPreviews] = useState<Preview[] | null>(null);
+  const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [active, setActive] = useState<SearchHit | null>(null);
   const [checked, setChecked] = useState<MetadataField[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const panel = useRef<HTMLDetailsElement>(null);
+  const summary = useRef<HTMLElement>(null);
   const gallery = useRef<HTMLElement>(null);
+  const coverHeading = useRef<HTMLHeadingElement>(null);
+  const previews = preview?.items ?? null;
+  const pagination = preview?.pagination;
+  const pager = pagination && (pagination.page > 0 || pagination.hasNext) ? pagination : null;
+  const showingCovers = previews !== null && active !== null && provider === "steamgriddb";
   const loading = disabled || busy;
   useEffect(() => {
-    if (provider === "steamgriddb" && previews !== null) gallery.current?.scrollIntoView({ block: "nearest" });
-  }, [provider, previews]);
+    if (provider === "steamgriddb" && preview && panel.current?.open) {
+      coverHeading.current?.focus({ preventScroll: true });
+      gallery.current?.scrollIntoView({ block: "start" });
+    }
+  }, [provider, preview, error]);
 
   async function work(action: () => Promise<void>) {
     setBusy(true);
@@ -41,7 +62,7 @@ export function MetadataLookup({ title, draft, protectedFields, disabled, onStag
     setServices(providers);
     setProvider(providers.find(p => p.enabled)?.id ?? "");
   });
-  function resetResults() { setHits(null); setActive(null); setPreviews(null); setChecked([]); setNotice(""); setError(""); }
+  function resetResults() { setHits(null); setActive(null); setPreview(null); setChecked([]); setNotice(""); setError(""); }
   const search = () => {
     const value = (query ?? title.slice(0, 150)).trim();
     if (loading || !provider || !value) return;
@@ -49,29 +70,36 @@ export function MetadataLookup({ title, draft, protectedFields, disabled, onStag
     void work(async () => setHits((await api<{ items: SearchHit[] }>("metadata/search", "POST", { provider, query: value })).items));
   };
   const select = (hit: SearchHit) => {
+    if (loading || !provider) return;
     setActive(hit);
-    setPreviews(null);
+    setPreview(null);
     void work(async () => {
-      const { items } = await api<{ items: Preview[] }>("metadata/preview", "POST", { provider, id: hit.id });
-      setPreviews(items);
-      setChecked(metadataFields.filter(field => !!items[0]?.candidate.fields[field]));
+      const result = await api<PreviewResult>("metadata/preview", "POST", { provider, id: hit.id });
+      setPreview(result);
+      setChecked(metadataFields.filter(field => !!result.items[0]?.candidate.fields[field]));
     });
   };
-  const stage = (p: Preview, fields: MetadataField[], replaceCover = false) => {
-    onStage(p, fields, replaceCover);
-    setNotice(provider === "steamgriddb" ? "已选封面，保存游戏后生效。" : "已暂存 " + fields.length + " 个字段，保存游戏后生效。");
+  const goToCoverPage = (page: number) => {
+    if (loading || !active || provider !== "steamgriddb") return;
+    void work(async () => setPreview(await api<PreviewResult>("metadata/preview", "POST", { provider, id: active.id, page })));
+  };
+  const stage = (p: Preview, fields: MetadataField[]) => {
+    onStage(p, fields);
+    setNotice("已暂存 " + fields.length + " 个字段，保存游戏后生效。");
   };
   const pickCover = (p: Preview) => {
     const replacingProtected = protectedFields.has("coverUrl");
     if (replacingProtected && !confirm("当前封面已锁定或在本次编辑中手动修改。用选中的图片替换它？保存后生效。")) return;
-    stage(p, ["coverUrl"], replacingProtected);
+    onStage(p, ["coverUrl"], replacingProtected);
+    if (panel.current) panel.current.open = false;
+    summary.current?.focus();
   };
 
-  return <details className="metadata-panel" onToggle={e => {
+  return <details ref={panel} className="metadata-panel" onToggle={e => {
     if (e.currentTarget.open && services === null && !busy) void load();
   }}>
-    <summary>查找外部资料或封面</summary>
-    {error && <p className="error" role="alert">{error}</p>}
+    <summary ref={summary}>查找外部资料或封面</summary>
+    {error && !showingCovers && <p className="error" role="alert">{error}</p>}
     {services === null && <p className="muted">{busy ? "正在读取资料源…" : <button type="button" onClick={() => void load()}>重新读取资料源</button>}</p>}
     {services && !provider && <p className="muted">容器未配置外部资料源，仍可手动填写。配置方式见部署文档。</p>}
     {services && !!provider && <>
@@ -95,20 +123,26 @@ export function MetadataLookup({ title, draft, protectedFields, disabled, onStag
         </button>)}
       </div>}
       {previews && !previews.length && provider !== "steamgriddb" && <p className="muted">该条目暂无可导入的字段。</p>}
-      {previews !== null && active && provider === "steamgriddb" && <section ref={gallery} className="metadata-cover-panel" aria-label="SteamGridDB 封面候选">
-        <div className="metadata-cover-heading"><h3>选择封面</h3><small>{previews.length} 张竖版封面</small></div>
-        {!previews.length && <p className="muted">该条目暂无可导入的竖版封面，可以尝试同名的其他版本。</p>}
+      {showingCovers && <section ref={gallery} className="metadata-cover-panel" aria-label="SteamGridDB 封面候选" aria-busy={busy}>
+        <div className="metadata-cover-heading"><h3 ref={coverHeading} tabIndex={-1}>选择封面</h3><small>本页 {previews.length} 张竖版封面</small></div>
+        {pager && <CoverPager pagination={pager} disabled={loading} onChange={goToCoverPage}/>}
+        {error && <p className="error" role="alert">{error}</p>}
+        {!previews.length && <p className="muted">{pager ? "本页暂无可导入的竖版封面，可以切换到其他页。" : "该条目暂无可导入的竖版封面，可以尝试同名的其他版本。"}</p>}
         {!!previews.length && <div className="metadata-covers">
-          {previews.map((p, i) => <figure key={p.candidate.externalId}>
-            <img src={p.image?.thumbnail} alt={active.title + " 候选封面 " + (i + 1)} loading="lazy" referrerPolicy="no-referrer"
-              onError={e => {
-                const full = p.candidate.fields.coverUrl;
-                if (full && e.currentTarget.src !== full) e.currentTarget.src = full;
-              }}/>
-            <figcaption><SourceLink provider={provider} id={p.candidate.externalId}/>{p.image?.width && p.image.height ? " · " + p.image.width + "×" + p.image.height : " · 竖版"}</figcaption>
-            <button type="button" disabled={loading} onClick={() => pickCover(p)}>选择封面 {i + 1}</button>
-          </figure>)}
+          {previews.map((p, i) => {
+            const number = i + 1 + (pagination ? pagination.page * pagination.pageSize : 0);
+            return <figure key={p.candidate.externalId}>
+              <img src={p.image?.thumbnail} alt={active.title + " 候选封面 " + number} loading="lazy" referrerPolicy="no-referrer"
+                onError={e => {
+                  const full = p.candidate.fields.coverUrl;
+                  if (full && e.currentTarget.src !== full) e.currentTarget.src = full;
+                }}/>
+              <figcaption><SourceLink provider={provider} id={p.candidate.externalId}/>{p.image?.width && p.image.height ? " · " + p.image.width + "×" + p.image.height : " · 竖版"}</figcaption>
+              <button type="button" disabled={loading} onClick={() => pickCover(p)}>选择封面 {number}</button>
+            </figure>;
+          })}
         </div>}
+        {pager && !!previews.length && <CoverPager pagination={pager} disabled={loading} onChange={goToCoverPage} bottom/>}
         <a href={"https://www.steamgriddb.com/game/" + encodeURIComponent(active.id) + "/grids"} target="_blank" rel="noreferrer">在 SteamGridDB 查看该条目</a>
       </section>}
       {!!previews?.length && provider !== "steamgriddb" && <div className="metadata-preview">
@@ -124,7 +158,7 @@ export function MetadataLookup({ title, draft, protectedFields, disabled, onStag
         </div>)}
         <button type="button" disabled={loading || !checked.length} onClick={() => stage(previews[0], checked)}>暂存所选字段</button>
       </div>}
-      {hits?.length ? <p className="muted">结果来自 <SourceLink provider={provider}/>，最多显示 12 项。请核对同名游戏与不同版本。</p> : null}
+      {hits?.length ? <p className="muted">作品搜索结果来自 <SourceLink provider={provider}/>，最多显示 12 个作品。请核对同名游戏与不同版本。</p> : null}
       {notice && <p className="muted" role="status">{notice}</p>}
     </>}
   </details>;

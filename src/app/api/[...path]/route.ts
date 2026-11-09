@@ -84,8 +84,8 @@ async function handle(req:NextRequest,context:{params:Promise<{path:string[]}>})
       return result({items:await metadataService().search(user.id,provider,query)});
     }
     if(key==="metadata/preview" && method==="POST"){
-      const {provider,id}=previewInput.parse(await body(req));
-      return result({items:await metadataService().preview(user.id,provider,id)});
+      const {provider,id,page}=previewInput.parse(await body(req));
+      return result(await metadataService().preview(user.id,provider,id,page));
     }
     if(key==="platforms" && method==="POST"){
       if(!canManagePlatforms)throw new HttpError(403,"仅实例管理员可以管理平台");

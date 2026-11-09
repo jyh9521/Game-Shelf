@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { MetadataError, ProviderHttp } from "./metadata-http";
-import { makeAdapters, type Detail } from "./metadata-providers";
-import { providers, providerLabels, type Provider, type Candidate, type FieldSources, type Preview, type SearchHit, type Selection } from "./metadata-domain";
+import { makeAdapters, type DetailPage } from "./metadata-providers";
+import { providers, providerLabels, type Provider, type Candidate, type FieldSources, type PreviewResult, type SearchHit, type Selection } from "./metadata-domain";
 
 type Cached<T> = { data: T; collectedAt: string };
 class ExpiringMap<T> {
@@ -24,12 +24,12 @@ type Bucket = { count: number; until: number };
 export class MetadataService {
   private adapters;
   private searchCache = new ExpiringMap<Cached<SearchHit[]>>(128, 180000);
-  private previewCache = new ExpiringMap<Cached<Detail[]>>(128, 180000);
+  private previewCache = new ExpiringMap<Cached<DetailPage>>(128, 180000);
   private tokens = new ExpiringMap<{ userId: string; candidate: Candidate }>(600, 1200000);
   private userRates = new ExpiringMap<Bucket>(500, 60000);
   private providerRates = new ExpiringMap<Bucket>(providers.length, 60000);
   private cooldowns = new Map<Provider, number>();
-  private pending = new Map<Provider, { key: string; result: Promise<Cached<unknown[]>> }>();
+  private pending = new Map<Provider, { key: string; result: Promise<Cached<unknown>> }>();
 
   constructor(env: Readonly<Record<string, string | undefined>>, fetcher: typeof fetch) {
     this.adapters = makeAdapters(env, new ProviderHttp(fetcher));
@@ -49,20 +49,20 @@ export class MetadataService {
     if (!adapter) throw new MetadataError(409, providerLabels[id] + " 尚未在容器中配置。");
     return adapter;
   }
-  private async query<T>(id: Provider, key: string, cache: ExpiringMap<Cached<T[]>>, work: () => Promise<T[]>): Promise<Cached<T[]>> {
+  private async query<T>(id: Provider, key: string, cache: ExpiringMap<Cached<T>>, work: () => Promise<T>, isEmpty: (data: T) => boolean): Promise<Cached<T>> {
     const cached = cache.get(key);
     if (cached) return cached;
     const retryAt = this.cooldowns.get(id);
     if (retryAt && retryAt > Date.now()) throw new MetadataError(429, providerLabels[id] + " 正在等待调用额度恢复。", retryAt);
     const active = this.pending.get(id);
-    if (active?.key === key) return active.result as Promise<Cached<T[]>>;
+    if (active?.key === key) return active.result as Promise<Cached<T>>;
     if (active) throw new MetadataError(429, providerLabels[id] + " 正在处理另一条查询，请稍后再试。", Date.now() + 1000);
     this.charge(this.providerRates, id, 20);
     const result = (async () => {
       try {
         const data = await work();
         const value = { data, collectedAt: new Date().toISOString() };
-        cache.set(key, value, data.length ? undefined : 30000);
+        cache.set(key, value, isEmpty(data) ? 30000 : undefined);
         return value;
       } catch (error) {
         if (error instanceof MetadataError && error.retryAt) this.cooldowns.set(id, error.retryAt);
@@ -77,18 +77,20 @@ export class MetadataService {
     const adapter = this.adapter(provider);
     this.charge(this.userRates, userId, 40);
     if (/^\.+$/.test(query)) return [];
-    return (await this.query(provider, "search:" + provider + ":" + query, this.searchCache, () => adapter.search(query))).data;
+    return (await this.query(provider, "search:" + provider + ":" + query, this.searchCache, () => adapter.search(query), data => !data.length)).data;
   }
-  async preview(userId: string, provider: Provider, id: string): Promise<Preview[]> {
+  async preview(userId: string, provider: Provider, id: string, page = 0): Promise<PreviewResult> {
     const adapter = this.adapter(provider);
     this.charge(this.userRates, userId, 40);
-    const { data, collectedAt } = await this.query(provider, "preview:" + provider + ":" + id, this.previewCache, () => adapter.preview(id));
-    return data.map(detail => {
+    const { data, collectedAt } = await this.query(provider, "preview:" + provider + ":" + id + ":" + page,
+      this.previewCache, () => adapter.preview(id, page), result => !result.items.length);
+    const items = data.items.map(detail => {
       const candidate = { provider, externalId: detail.id, fields: detail.fields, collectedAt };
       const token = randomUUID();
       this.tokens.set(token, { userId, candidate });
       return { candidate, token, image: detail.image };
     });
+    return { items, pagination: data.pagination };
   }
   resolve(userId: string, selections: Selection[]): FieldSources {
     const selected: FieldSources = {};

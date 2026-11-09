@@ -153,7 +153,9 @@ try {
     await page.getByRole("heading", { name: "QA 塞尔达传说：时之笛", exact: true }).click();
     await page.getByRole("button", { name: "编辑资料", exact: true }).click();
     const editor = page.getByRole("dialog", { name: "编辑游戏", exact: true });
-    await editor.getByText("查找外部资料或封面", { exact: true }).click();
+    const lookup = editor.locator("details.metadata-panel");
+    const summary = lookup.locator("summary");
+    await summary.click();
     await editor.getByLabel("资料源").selectOption("steamgriddb");
     await editor.getByLabel("外部搜索标题").fill(zelda.title);
     await editor.getByRole("button", { name: "搜索外部资料" }).click();
@@ -174,9 +176,11 @@ try {
     page.once("dialog", d => d.accept());
     await choose.click();
     await expect(coverInput).toHaveValue(zelda.cover);
+    await expect(gallery).toBeHidden();
     await editor.getByRole("button", { name: "移除暂存：封面", exact: true }).click();
     await expect(coverInput).toHaveValue(legacyCover);
     await page.setViewportSize({ width: 390, height: 844 });
+    await summary.click();
     await choose.scrollIntoViewIfNeeded();
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth &&
       [...document.querySelectorAll(".modal")].every(e => e.scrollWidth <= e.clientWidth)));

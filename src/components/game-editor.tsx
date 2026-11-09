@@ -56,6 +56,8 @@ export function GameEditor({ game, ownership, error, busy, onClose, onSave }: {
         onSave(new FormData(e.currentTarget), [...selected.values()], [...draft.dirty]);
       }}>
         <MetadataLookup title={draft.values.title} draft={draft.values} protectedFields={new Set([...locks, ...draft.dirty])} disabled={busy} onStage={stage}/>
+        {draft.staged.coverUrl?.preview.candidate.fields.coverUrl === draft.values.coverUrl &&
+          <p className="muted" role="status">已选封面，保存游戏后生效。</p>}
         {stagedFields.length > 0 && <ul className="metadata-staged" aria-label="已暂存的候选字段">
           {stagedFields.map(field => {
             const c = draft.staged[field]!.preview.candidate;

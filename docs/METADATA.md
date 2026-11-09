@@ -28,13 +28,13 @@ docker compose pull gameshelf
 docker compose up -d --no-build --wait gameshelf
 ```
 
-只修改密钥时，重新创建容器即可生效，无需构建镜像。现有 Unraid 容器使用 `jyh9521/gameshelf:0.1.8`，保留 `/data` 映射、端口和原有设置及 API 变量。升级前保留旧镜像、配置和一致性数据库快照；详见[升级与回退](releases/0.1.8.md)。
+只修改密钥时，重新创建容器即可生效，无需构建镜像。现有 Unraid 容器使用 `jyh9521/gameshelf:0.1.9`，保留 `/data` 映射、端口和原有设置及 API 变量。升级前保留旧镜像、配置和一致性数据库快照；详见[升级与回退](releases/0.1.9.md)。
 
 ## 查找、保存和恢复来源值
 
 1. 进入「登记游戏」或「编辑资料」→「查找外部资料或封面」。选择已配置的服务，输入名称并点击搜索。仅在主动搜索时发送标题，输入字符不触发外部查询。
 2. 核对同名结果的来源 ID、平台、发行日期和精度（来源有提供时）。标题、原始标题、类型、公司和简介按供应商实际返回而定；发行日期等只供辨认，不自动修改你拥有的发行版本、地区、渠道或游玩资料。
-3. 勾选需要的字段并暂存。SteamGridDB 在选中作品后显示封面选择区，只保存远程图片 URL。点「保存游戏」才写入。资料候选不会自动覆盖锁定或手动改过的字段（含清空）；在封面选择区主动确认替换，可以更换锁定封面，锁定状态仍然保留。
+3. 勾选需要的字段并暂存。SteamGridDB 在选中作品后显示封面选择区，可用「上一页 / 下一页」浏览该作品的全部可导入竖版封面，每页最多 12 张。选图后自动收起，重新展开可回到原页。点「保存游戏」才写入远程图片 URL。资料候选不会自动覆盖锁定或手动改过的字段（含清空）；更换锁定封面需要确认，确认后锁定状态仍然保留，取消会留在原页。
 4. 游戏详情 →「字段来源与历史」显示当前值、锁定、最新候选、外部 ID 和采集时间。点「恢复自动更新」并确认，才应用该候选；没有候选时只解除锁定并保留当前值。此处的「自动」表示字段以后可以接受你确认的新来源，不是后台定时同步。
 
 ## 工程与验证
@@ -42,6 +42,7 @@ docker compose up -d --no-build --wait gameshelf
 - 游戏主体和拥有版本结构不变。`UserGameMetadata` 按个人档案保存有效值；列表标题、搜索、类型和关系标题使用本人资料。`ProfileFieldHistory` 按字段记录手动、选用来源、解除锁定，以及每步的候选和值。界面显示最近 40 条，JSON 保留全部。
 - `20261109000000_metadata_history` 复制旧版实际显示值，不改旧游戏、拥有记录、账号、会话或关系，不补造来源和历史。JSON v3 包含 `fieldHistory`，v1/v2 可以预览并恢复到空库，识别旧恢复指纹。v3 文件供新版本恢复；降级到 0.1.6 使用升级前快照。
 - 搜索和候选预览走已登录的 GameShelf 服务端。使用短时有界缓存、每用户/来源限流、请求超时，遵循来源的 `Retry-After`；候选仅能由发起用户在有效期内提交。进程重启后，尚未保存的候选需要重新预览。外部接口失败不会写入库，也不阻断手动保存。
+- SteamGridDB 封面预览按 [API v2 的 `page` / `limit`](https://www.steamgriddb.com/api/v2#tag/GRIDS/operation/getGridsByGameId) 分页。缓存包含作品和页码；本页个别封面被过滤时，仍按上游页数继续翻页。作品搜索与封面分页是独立的。
 - 服务实际额度和获准用途以供应商账户和条款为准。参见 [IGDB 使用条件](https://api-docs.igdb.com/)、[RAWG API 条款](https://rawg.io/tos_api)、[TheGamesDB API 定义](https://github.com/TheGamesDB/TheGamesDBv2/blob/master/API/spec.yaml)、[ScreenScraper API 条件](https://www.screenscraper.fr/webapi2.php) 和 [SteamGridDB API](https://www.steamgriddb.com/api/v2)。GameShelf 不打包外部数据集或封面文件；含外部字段的 JSON 用于私有恢复。
 
 ```sh

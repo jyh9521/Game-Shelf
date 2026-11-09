@@ -31,6 +31,8 @@ button.selected:hover{background:var(--accent)}
 .metadata-cover-panel{border-top:1px solid var(--line);padding-top:13px;margin-top:14px;scroll-margin:16px;font-size:12px}
 .metadata-cover-heading{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .metadata-cover-heading h3{border:0;margin:0;padding:0}.metadata-cover-heading small{color:var(--muted)}
+.metadata-cover-pagination{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;margin:12px 0;color:var(--muted)}
+.metadata-cover-pagination button{padding:8px 12px;white-space:nowrap;min-height:36px}
 .platform-card{display:grid;align-items:center;grid-template-columns:minmax(0,1fr) auto;gap:8px;min-width:0;padding:12px;border:1px solid var(--line);border-radius:10px}
 .platform-card strong,.platform-card small{display:block;overflow-wrap:anywhere}
 .platform-card small{margin-top:5px;color:var(--muted);font-size:11px}.platform-card code{font-size:11px}

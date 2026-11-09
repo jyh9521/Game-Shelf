@@ -1,9 +1,10 @@
 import { date } from "./domain";
-import { fieldValue, isGridImage, type Metadata, type Provider, type SearchHit } from "./metadata-domain";
+import { fieldValue, isGridImage, type CoverPagination, type Metadata, type Provider, type SearchHit } from "./metadata-domain";
 import { invalidResponse, MetadataError, ProviderHttp, upstreamError } from "./metadata-http";
 
 export type Detail = { id: string; fields: Partial<Metadata>; image?: { thumbnail: string; width?: number; height?: number } };
-type Adapter = { search(query: string): Promise<SearchHit[]>; preview(id: string): Promise<Detail[]> };
+export type DetailPage = { items: Detail[]; pagination?: CoverPagination };
+type Adapter = { search(query: string): Promise<SearchHit[]>; preview(id: string, page: number): Promise<DetailPage> };
 type Row = Record<string, unknown>;
 const row = (x: unknown): Row => x && typeof x === "object" && !Array.isArray(x) ? x as Row : {};
 const rows = (x: unknown) => Array.isArray(x) ? x.map(row) : Object.values(row(x)).map(row);
@@ -39,9 +40,9 @@ function queryUrl(base: string, params: Record<string, string>) {
   url.search = new URLSearchParams(params).toString();
   return url;
 }
-function details(id: string, input: Partial<Metadata>): Detail[] {
+function details(id: string, input: Partial<Metadata>): DetailPage {
   const result = fields(input);
-  return Object.keys(result).length ? [{ id, fields: result }] : [];
+  return { items: Object.keys(result).length ? [{ id, fields: result }] : [] };
 }
 
 function igdb(http: ProviderHttp, clientId: string, clientSecret: string): Adapter {
@@ -87,7 +88,7 @@ function igdb(http: ProviderHttp, clientId: string, clientSecret: string): Adapt
       const data = await games("fields name,summary,genres.name,involved_companies.developer,involved_companies.publisher,involved_companies.company.name; where id = " + id + "; limit 1;");
       if (!Array.isArray(data)) throw invalidResponse("igdb");
       const g = data.map(row).find(item => numericId(item.id) === id);
-      if (!g) return [];
+      if (!g) return { items: [] };
       const companies = rows(g.involved_companies);
       return details(id, {
         title: text(g.name), description: text(g.summary), genre: join(nameList(g.genres)),
@@ -111,7 +112,7 @@ function rawg(http: ProviderHttp, key: string): Adapter {
     },
     async preview(id) {
       const g = row(await request("/" + id, {}, true));
-      if (numericId(g.id) !== id) return [];
+      if (numericId(g.id) !== id) return { items: [] };
       const description = text(g.description_raw) ||
         text(g.description).replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").trim();
       return details(id, {
@@ -160,9 +161,9 @@ function thegamesdb(http: ProviderHttp, key: string): Adapter {
     },
     async preview(id) {
       const r = await request("v1/Games/ByGameID", { id, fields: "overview,genres,publishers,developers" }, true);
-      if (!r) return [];
+      if (!r) return { items: [] };
       const g = rows(row(r.data).games).find(item => numericId(item.id) === id);
-      if (!g) return [];
+      if (!g) return { items: [] };
       const [genre, developer, publisher] = await Promise.all([
         lookup("Genres", g.genres), lookup("Developers", g.developers), lookup("Publishers", g.publishers)
       ]);
@@ -219,9 +220,9 @@ function screenscraper(http: ProviderHttp, credentials: Record<string, string>):
     },
     async preview(id) {
       const r = await request("jeuInfos", { gameid: id });
-      if (!r) return [];
+      if (!r) return { items: [] };
       const g = row(r.jeu);
-      if (numericId(g.id) !== id) return [];
+      if (numericId(g.id) !== id) return { items: [] };
       return details(id, {
         title: title(g), description: synopsis(g), developer: entry(g.developpeur), publisher: entry(g.editeur), genre: genres(g)
       });
@@ -231,23 +232,37 @@ function screenscraper(http: ProviderHttp, credentials: Record<string, string>):
 
 function steamgriddb(http: ProviderHttp, key: string): Adapter {
   const provider = "steamgriddb";
-  const request = async (path: string, params: Record<string, string> = {}) => {
+  const pageSize = 12;
+  const integer = (value: unknown) => {
+    const n = typeof value === "string" && /^\d+$/.test(value) ? Number(value) : value;
+    return typeof n === "number" && Number.isSafeInteger(n) && n >= 0 ? n : null;
+  };
+  const request = async (path: string, params: Record<string, string> = {}): Promise<Row & { data: unknown[] }> => {
     const data = await http.json(provider, queryUrl("https://www.steamgriddb.com/api/v2/" + path, params),
       { headers: { Authorization: "Bearer " + key } }, true);
-    if (data === null) return [];
+    if (data === null) return { data: [] };
     const r = row(data);
     if (r.success !== true || !Array.isArray(r.data)) throw invalidResponse(provider);
-    return r.data;
+    return { ...r, data: r.data };
   };
   return {
     async search(query) {
-      const data = await request("search/autocomplete/" + encodeURIComponent(query));
+      const { data } = await request("search/autocomplete/" + encodeURIComponent(query));
       return hits(provider, data, g => ({ id: numericId(g.id), title: text(g.name), date: unixDate(g.release_date), platforms: [] }));
     },
-    async preview(gameId) {
-      const data = await request("grids/game/" + gameId, {
-        dimensions: "600x900,342x482,660x930", types: "static", nsfw: "false", humor: "false", epilepsy: "false", limit: "24"
+    async preview(gameId, page) {
+      const response = await request("grids/game/" + gameId, {
+        dimensions: "600x900,342x482,660x930", types: "static", nsfw: "false", humor: "false", epilepsy: "false",
+        limit: String(pageSize), page: String(page)
       });
+      const { data } = response;
+      if (data.length > pageSize || (response.page !== undefined && integer(response.page) !== page) ||
+        (response.limit !== undefined && integer(response.limit) !== pageSize)) throw invalidResponse(provider);
+      // Page boundaries come from upstream, not the number of usable cards
+      // remaining after validating URLs, dimensions and content tags.
+      const total = integer(response.total);
+      const totalPages = total !== null && (!data.length || total >= page * pageSize + data.length)
+        ? Math.max(1, Math.ceil(total / pageSize)) : null;
       const covers = new Map<string, Detail>();
       for (const g of data.map(row)) {
         const id = numericId(g.id), coverUrl = text(g.url), thumbnail = text(g.thumb);
@@ -258,9 +273,9 @@ function steamgriddb(http: ProviderHttp, key: string): Adapter {
         covers.set(id, { id, fields: { coverUrl }, image: {
           ...(hasDimensions ? { width, height } : {}), thumbnail: isGridImage(thumbnail) ? thumbnail : coverUrl
         } });
-        if (covers.size >= 12) break;
       }
-      return [...covers.values()];
+      return { items: [...covers.values()], pagination: { page, pageSize, totalPages,
+        hasNext: totalPages === null ? data.length === pageSize : page + 1 < totalPages } };
     }
   };
 }
