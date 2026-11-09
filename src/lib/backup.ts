@@ -1,8 +1,10 @@
 import { z } from "zod";
 import { db } from "./db";
-import { gameInput, ownershipInput, date, statuses, normalize } from "./domain";
+import { gameInput, ownershipInput, date, statuses } from "./domain";
 import { hashToken } from "./auth";
 import { relationRecord, relationEventRecord, validateRelationGraph, validateRelationHistory } from "./relation-domain";
+import { encodeLocks, fieldEventRecord, fieldValue, lockedFields, metadataFields, metadataOf, searchTextOf, validateFieldHistory, type MetadataField } from "./metadata-domain";
+import { fieldEventData, serializeFieldEvent } from "./game-metadata";
 const id = z.string().min(1).max(100);
 const timestamp = z.iso.datetime();
 const nullableSeconds = z.number().int().min(0).max(2147483647).nullable();
@@ -24,14 +26,41 @@ const backupV2 = backupV1.extend({
   relations: z.array(relationRecord).max(300000),
   relationHistory: z.array(relationEventRecord).max(300000)
 }).strict();
-// Read v1 without guessing relationships. All new exports use the explicit v2 format.
-export const backupSchema = z.discriminatedUnion("schema_version", [backupV1, backupV2]).transform(b =>
-  b.schema_version === 1 ? { ...b, schema_version: 2 as const, relations: [], relationHistory: [] } : b
-);
+const v3Profile = backupV1.shape.profiles.element.extend({
+  overridesJson: backupV1.shape.profiles.element.shape.overridesJson.refine(s => {
+    try {
+      return Object.entries(JSON.parse(s)).every(([key, value]) => {
+        const override = value as { mode: string; value: unknown };
+        return metadataFields.includes(key as MetadataField) && Object.keys(override).length === 2 &&
+          fieldValue(key as MetadataField, override.value);
+      });
+    } catch { return false; }
+  })
+});
+const backupV3 = backupV2.extend({
+  schema_version: z.literal(3), fieldHistory: z.array(fieldEventRecord).max(300000), profiles: z.array(v3Profile).max(100000)
+}).strict().superRefine((b, ctx) => {
+  const games = new Map(b.games.map(game => [game.id, game]));
+  for (const [index, profile] of b.profiles.entries()) {
+    const game = games.get(profile.gameId);
+    if (!game) continue; // validated together with the other references
+    const locks = lockedFields(profile.overridesJson);
+    if (locks.size && [...locks].some(field => JSON.parse(profile.overridesJson)[field].value !== game[field])) {
+      ctx.addIssue({ code: "custom", path: ["profiles", index, "overridesJson"], message: "锁定值与作品资料不一致" });
+    }
+  }
+});
+// v1/v2 have no external candidate or field history. Preserve the old
+// overrides string until the old restore fingerprints have been checked.
+export const backupSchema = z.discriminatedUnion("schema_version", [backupV1, backupV2, backupV3]).transform(b => {
+  if (b.schema_version === 3) return b;
+  if (b.schema_version === 2) return { ...b, schema_version: 3 as const, fieldHistory: [] };
+  return { ...b, schema_version: 3 as const, relations: [], relationHistory: [], fieldHistory: [] };
+});
 export type Backup = z.infer<typeof backupSchema>;
 export function validateReferences(b: Backup) {
   const sets = new Map<string, Set<string>>();
-  for (const name of ["platforms","stores","games","releases","editions","items","contents","profiles","relations","relationHistory"] as const) {
+  for (const name of ["platforms","stores","games","releases","editions","items","contents","profiles","relations","relationHistory","fieldHistory"] as const) {
     const ids = b[name].map(v=>v.id);
     if (new Set(ids).size!==ids.length) throw new Error(`${name} 存在重复 ID`);
     sets.set(name,new Set(ids));
@@ -64,11 +93,12 @@ export function validateReferences(b: Backup) {
   }
   validateRelationGraph(b.relations);
   validateRelationHistory(b.relations, b.relationHistory);
+  validateFieldHistory(b.fieldHistory, new Map(b.games.map(g => [g.id, g])), new Map(b.profiles.map(p => [p.gameId, p.overridesJson])));
 }
 export async function exportBackup(userId: string): Promise<Backup> {
   // 同一事务取得一致性快照，不包含管理员密码、会话或认证配置。
   return db.$transaction(async tx=>{
-    const profiles=await tx.userGameProfile.findMany({where:{userId}});
+    const profiles=await tx.userGameProfile.findMany({where:{userId},include:{metadata:true}});
     const gameIds=profiles.map(p=>p.gameId);
     const games=await tx.game.findMany({where:{id:{in:gameIds}}});
     const releases=await tx.release.findMany({where:{gameId:{in:gameIds}}});
@@ -78,13 +108,23 @@ export async function exportBackup(userId: string): Promise<Backup> {
     const relationWhere = { userId, sourceGameId: { in: gameIds }, targetGameId: { in: gameIds } };
     const relations = await tx.gameRelation.findMany({ where: relationWhere });
     const relationHistory = await tx.gameRelationEvent.findMany({ where: relationWhere });
-    return backupSchema.parse({format:"gameshelf",schema_version:2,exportedAt:new Date().toISOString(),
+    const history = await tx.profileFieldHistory.findMany({ where: { metadata: { profile: { userId } } } });
+    const profilesByGame = new Map(profiles.map(p => [p.gameId, p]));
+    const gamesById = new Map(games.map(g => [g.id, g]));
+    const gamesByProfile = new Map(profiles.map(p => [p.id, p.gameId]));
+    return backupSchema.parse({format:"gameshelf",schema_version:3,exportedAt:new Date().toISOString(),
       platforms:await tx.platform.findMany(),stores:await tx.store.findMany(),
-      games:games.map(({searchText,...g})=>({...g,createdAt:g.createdAt.toISOString(),updatedAt:g.updatedAt.toISOString()})),
+      games:games.map(g=>{
+        const effective = profilesByGame.get(g.id)?.metadata ?? g;
+        return { id: g.id, ...metadataOf(effective), createdAt:g.createdAt.toISOString(),updatedAt:effective.updatedAt.toISOString() };
+      }),
       releases,editions,items:items.map(({userId,...i})=>({...i,createdAt:i.createdAt.toISOString()})),
-      contents,profiles:profiles.map(({userId,...p})=>p),
+      contents,profiles:profiles.map(({userId,metadata,...p})=>({
+        ...p, overridesJson: encodeLocks(lockedFields(p.overridesJson), metadata ?? gamesById.get(p.gameId)!)
+      })),
       relations:relations.map(({userId,...r})=>({...r,createdAt:r.createdAt.toISOString(),updatedAt:r.updatedAt.toISOString()})),
-      relationHistory:relationHistory.map(({userId,...e})=>({...e,createdAt:e.createdAt.toISOString()}))});
+      relationHistory:relationHistory.map(({userId,...e})=>({...e,createdAt:e.createdAt.toISOString()})),
+      fieldHistory:history.map(e => serializeFieldEvent(e, gamesByProfile.get(e.profileId)!))});
   });
 }
 export async function restoreBackup(b: Backup,userId:string) {
@@ -97,20 +137,39 @@ export async function restoreBackup(b: Backup,userId:string) {
   };
   const importId=hashToken(userId+JSON.stringify(canonical({...b,exportedAt:""})));
   const compatibleIds = [importId];
-  if (!b.relations.length && !b.relationHistory.length) {
-    const { relations, relationHistory, ...legacy } = b;
-    compatibleIds.push(hashToken(userId+JSON.stringify(canonical({...legacy,schema_version:1,exportedAt:""}))));
+  if (!b.fieldHistory.length) {
+    const { fieldHistory, ...v2 } = b;
+    compatibleIds.push(hashToken(userId+JSON.stringify(canonical({...v2,schema_version:2,exportedAt:""}))));
+    if (!v2.relations.length && !v2.relationHistory.length) {
+      const { relations, relationHistory, ...v1 } = v2;
+      compatibleIds.push(hashToken(userId+JSON.stringify(canonical({...v1,schema_version:1,exportedAt:""}))));
+    }
+  }
+  const games = new Map(b.games.map(g => [g.id, g]));
+  const profiles = new Map(b.profiles.map(p => [p.gameId, p.id]));
+  const stats = new Map<string, { revision: number; rawgAttributed: boolean }>();
+  for (const e of b.fieldHistory) {
+    const previous = stats.get(e.gameId);
+    stats.set(e.gameId, {
+      revision: Math.max(previous?.revision ?? 0, e.revision),
+      rawgAttributed: !!previous?.rawgAttributed || e.source?.provider === "rawg"
+    });
   }
   return db.$transaction(async tx=>{
     if(await tx.backupImport.findFirst({where:{id:{in:compatibleIds},userId}})) return {duplicate:true,games:0,items:0,relations:0};
     if(await tx.game.count() || await tx.libraryItem.count()) throw new Error("恢复要求空库，请先导出当前数据或使用新实例");
     await tx.platform.deleteMany();await tx.store.deleteMany();
     await tx.platform.createMany({data:b.platforms});await tx.store.createMany({data:b.stores});
-    await tx.game.createMany({data:b.games.map(g=>({...g,searchText:normalize([g.title,g.originalTitle,g.localizedTitle,g.developer,g.publisher].join(" "))}))});
+    await tx.game.createMany({data:b.games.map(g=>({...g,searchText:searchTextOf(g)}))});
     await tx.release.createMany({data:b.releases});await tx.edition.createMany({data:b.editions});
     await tx.libraryItem.createMany({data:b.items.map(i=>({...i,userId}))});
     await tx.libraryItemContent.createMany({data:b.contents});
     await tx.userGameProfile.createMany({data:b.profiles.map(p=>({...p,userId}))});
+    await tx.userGameMetadata.createMany({ data: b.profiles.map(p => {
+      const g = games.get(p.gameId)!;
+      return { profileId: p.id, ...metadataOf(g), searchText: searchTextOf(g), updatedAt: new Date(g.updatedAt), ...stats.get(g.id) };
+    }) });
+    await tx.profileFieldHistory.createMany({ data: b.fieldHistory.map(e => fieldEventData(e, profiles.get(e.gameId)!)) });
     await tx.gameRelation.createMany({data:b.relations.map(r=>({...r,userId}))});
     await tx.gameRelationEvent.createMany({data:b.relationHistory.map(e=>({...e,userId}))});
     await tx.backupImport.create({data:{id:importId,userId}});

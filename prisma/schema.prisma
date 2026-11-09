@@ -130,8 +130,48 @@ model UserGameProfile {
   overridesJson String @default("{}")
   user User @relation(fields: [userId], references: [id])
   game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  metadata UserGameMetadata?
   @@unique([userId, gameId])
   @@index([userId, status])
+}
+
+// Effective values are indexed per user; the shared Game row is not edited
+// when a user accepts a candidate or changes a personal value.
+model UserGameMetadata {
+  profileId String @id
+  title String
+  originalTitle String
+  localizedTitle String
+  developer String
+  publisher String
+  genre String
+  description String
+  coverUrl String
+  searchText String
+  updatedAt DateTime
+  revision Int @default(0)
+  rawgAttributed Boolean @default(false)
+  profile UserGameProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  history ProfileFieldHistory[]
+  @@index([genre])
+  @@index([title])
+  @@index([updatedAt])
+}
+
+model ProfileFieldHistory {
+  id String @id
+  profileId String
+  field String
+  revision Int
+  action String
+  previousValue String?
+  value String
+  locked Boolean
+  sourceJson String?
+  createdAt DateTime
+  metadata UserGameMetadata @relation(fields: [profileId], references: [profileId], onDelete: Cascade)
+  @@unique([profileId, field, revision])
+  @@index([profileId, revision])
 }
 
 model BackupImport {

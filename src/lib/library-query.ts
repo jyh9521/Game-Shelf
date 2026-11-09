@@ -28,11 +28,15 @@ export function buildLibraryFilterOptions(genres:{genre:string}[],dates:{release
 export function buildLibraryQuery(params:URLSearchParams,userId:string){
   const data=query.parse(Object.fromEntries(params));const search=normalize(data.q).slice(0,500);
   const item:Prisma.LibraryItemWhereInput={userId,...(data.store?{storeId:data.store}:{}),...(data.mediaType?{mediaType:data.mediaType}:{}),...(data.acquisitionType?{acquisitionType:data.acquisitionType}:{}),...(data.accessStatus?{accessStatus:data.accessStatus}:{})};
-  const where:Prisma.GameWhereInput={profiles:{some:{userId,...(data.status?{status:data.status}:{}),...(data.favorite==="true"?{favorite:true}:{}),...(data.rating?{rating:data.rating==="unrated"?null:Number(data.rating)}:{})}},...(search?{searchText:{contains:search}}:{}),
-    ...(data.unclassified==="true"?{genre:""}:data.genre?{genre:data.genre}:{}),
-    ...((data.platform||data.store||data.mediaType||data.acquisitionType||data.accessStatus||data.year)?{releases:{some:{...(data.platform?{platformId:data.platform}:{}),
-      ...(data.year?{releaseDate:data.year==="unknown"?"":{startsWith:data.year}}:{}),contents:{some:{item}}}}}:{})};
-  const orders:Record<typeof librarySorts[number],Prisma.GameOrderByWithRelationInput>={added_desc:{createdAt:"desc"},added_asc:{createdAt:"asc"},title_asc:{title:"asc"},title_desc:{title:"desc"},updated_desc:{updatedAt:"desc"}};
+  const genre=data.unclassified==="true"?"":data.genre;
+  const where:Prisma.UserGameProfileWhereInput={userId,...(data.status?{status:data.status}:{}),...(data.favorite==="true"?{favorite:true}:{}),...(data.rating?{rating:data.rating==="unrated"?null:Number(data.rating)}:{}),
+    ...(search||genre!==undefined?{metadata:{...(search?{searchText:{contains:search}}:{}),...(genre!==undefined?{genre}:{})}}:{}),
+    ...((data.platform||data.store||data.mediaType||data.acquisitionType||data.accessStatus||data.year)?{game:{releases:{some:{...(data.platform?{platformId:data.platform}:{}),
+      ...(data.year?{releaseDate:data.year==="unknown"?"":{startsWith:data.year}}:{}),contents:{some:{item}}}}}}:{})};
+  const orders:Record<typeof librarySorts[number],Prisma.UserGameProfileOrderByWithRelationInput>={
+    added_desc:{game:{createdAt:"desc"}},added_asc:{game:{createdAt:"asc"}},
+    title_asc:{metadata:{title:"asc"}},title_desc:{metadata:{title:"desc"}},updated_desc:{metadata:{updatedAt:"desc"}}
+  };
   // 所有排序均以稳定 ID 收尾；组合拥有筛选必须命中同一个条目。
-  return {where,orderBy:[orders[data.sort],{id:"asc"}] as Prisma.GameOrderByWithRelationInput[],page:data.page};
+  return {where,orderBy:[orders[data.sort],{gameId:"asc"}] as Prisma.UserGameProfileOrderByWithRelationInput[],page:data.page};
 }

@@ -25,7 +25,7 @@ test("密码散列带随机盐并验证错误密码",async()=>{
 test("版本化备份拒绝未知字段、未知版本和悬空引用",()=>{
   const base={format:"gameshelf",schema_version:1,exportedAt:new Date().toISOString(),platforms:[],stores:[],games:[],releases:[],editions:[],items:[],contents:[],profiles:[]};
   assert.equal(backupSchema.safeParse(base).success,true);
-  assert.equal(backupSchema.safeParse({...base,schema_version:3}).success,false);
+  assert.equal(backupSchema.safeParse({...base,schema_version:4}).success,false);
   assert.equal(backupSchema.safeParse({...base,passwordHash:"secret"}).success,false);
   const b=backupSchema.parse({...base,releases:[{id:"r",gameId:"missing",platformId:"PC",releaseDate:"",region:""}]});
   assert.throws(()=>validateReferences(b),/悬空引用/);

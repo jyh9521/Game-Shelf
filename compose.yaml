@@ -1,7 +1,7 @@
 services:
   gameshelf:
     # Docker Hub 公开固定版本镜像；仍保留源码构建入口。
-    image: jyh9521/gameshelf:0.1.6
+    image: "${GAMESHELF_IMAGE:-jyh9521/gameshelf:0.1.7}"
     build: .
     ports:
       - "${GAMESHELF_PORT:-3000}:3000"
@@ -11,6 +11,16 @@ services:
       PGID: "${PGID:-1000}"
       SECURE_COOKIE: "${SECURE_COOKIE:-false}"
       APP_URL: "${APP_URL:-}"
+      IGDB_CLIENT_ID: "${IGDB_CLIENT_ID:-}"
+      IGDB_CLIENT_SECRET: "${IGDB_CLIENT_SECRET:-}"
+      RAWG_API_KEY: "${RAWG_API_KEY:-}"
+      THEGAMESDB_API_KEY: "${THEGAMESDB_API_KEY:-}"
+      SCREENSCRAPER_DEV_ID: "${SCREENSCRAPER_DEV_ID:-}"
+      SCREENSCRAPER_DEV_PASSWORD: "${SCREENSCRAPER_DEV_PASSWORD:-}"
+      SCREENSCRAPER_USERNAME: "${SCREENSCRAPER_USERNAME:-}"
+      SCREENSCRAPER_PASSWORD: "${SCREENSCRAPER_PASSWORD:-}"
+      SCREENSCRAPER_SOFTNAME: "${SCREENSCRAPER_SOFTNAME:-GameShelf}"
+      STEAMGRIDDB_API_KEY: "${STEAMGRIDDB_API_KEY:-}"
     volumes:
       - "${GAMESHELF_DATA_DIR:-./.data/docker}:/data"
     restart: unless-stopped

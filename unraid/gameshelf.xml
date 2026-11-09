@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Container version="2">
   <Name>GameShelf</Name>
-  <Repository>jyh9521/gameshelf:0.1.6</Repository>
+  <Repository>jyh9521/gameshelf:0.1.7</Repository>
   <Registry>https://hub.docker.com/r/jyh9521/gameshelf</Registry>
   <Network>bridge</Network>
   <MyIP></MyIP>
@@ -9,7 +9,7 @@
   <Privileged>false</Privileged>
   <Support></Support>
   <Project></Project>
-  <Overview>个人游戏收藏管理。公开镜像 jyh9521/gameshelf:0.1.6（Linux/amd64），支持作品关系与判定历史、v2 备份和旧 v1 迁移，以及个人评分、类型与拥有版本发售年份筛选。首次初始化凭据位于挂载目录的 setup-token 文件。数据库与媒体必须持久化到本地 appdata。</Overview>
+  <Overview>个人游戏收藏管理。镜像 jyh9521/gameshelf:0.1.7（Linux/amd64），支持外部游戏资料、SteamGridDB 封面、字段来源历史与手动锁定、作品关系和备份 v3（兼容 v1/v2）。资料服务凭据为可选变量。首次初始化凭据位于持久化目录的 setup-token 文件。</Overview>
   <Category>Productivity:</Category>
   <WebUI>http://[IP]:[PORT:3000]/</WebUI>
   <Icon></Icon>
@@ -21,6 +21,16 @@
   <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="实际运行进程的组 ID" Type="Variable" Display="always" Required="true" Mask="false">100</Config>
   <Config Name="访问地址" Target="APP_URL" Default="" Mode="" Description="反向代理时设置浏览器访问的完整地址" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
   <Config Name="HTTPS Cookie" Target="SECURE_COOKIE" Default="false" Mode="" Description="HTTPS 代理时设为 true；局域网 HTTP 为 false" Type="Variable" Display="advanced" Required="true" Mask="false">false</Config>
+  <Config Name="IGDB Client ID" Target="IGDB_CLIENT_ID" Default="" Mode="" Description="Twitch 应用 Client ID，须与 Client Secret 成对" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="IGDB Client Secret" Target="IGDB_CLIENT_SECRET" Default="" Mode="" Description="Twitch 应用 Client Secret" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="RAWG API Key" Target="RAWG_API_KEY" Default="" Mode="" Description="游戏资料搜索" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="TheGamesDB API Key" Target="THEGAMESDB_API_KEY" Default="" Mode="" Description="游戏资料搜索" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="ScreenScraper 开发者 ID" Target="SCREENSCRAPER_DEV_ID" Default="" Mode="" Description="与开发者密码成对" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="ScreenScraper 开发者密码" Target="SCREENSCRAPER_DEV_PASSWORD" Default="" Mode="" Description="ScreenScraper 核发的开发者凭据" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="ScreenScraper 用户名" Target="SCREENSCRAPER_USERNAME" Default="" Mode="" Description="与会员密码成对，或同时留空" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="ScreenScraper 会员密码" Target="SCREENSCRAPER_PASSWORD" Default="" Mode="" Description="与会员用户名成对" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="ScreenScraper 软件名" Target="SCREENSCRAPER_SOFTNAME" Default="GameShelf" Mode="" Description="如凭据绑定了软件名，填获准的名称" Type="Variable" Display="advanced" Required="false" Mask="false">GameShelf</Config>
+  <Config Name="SteamGridDB API Key" Target="STEAMGRIDDB_API_KEY" Default="" Mode="" Description="仅查找竖版封面" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
 </Container>
 
 

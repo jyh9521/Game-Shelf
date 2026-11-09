@@ -1,5 +1,6 @@
 import { z } from "zod";
 export const statuses = ["UNPLAYED", "PLAYING", "CLEARED", "COMPLETED", "ON_HOLD", "DROPPED", "BACKLOG"] as const;
+export const statusLabels = { UNPLAYED: "未游玩", PLAYING: "游玩中", CLEARED: "已通关", COMPLETED: "已完成", ON_HOLD: "暂停", DROPPED: "放弃", BACKLOG: "待游玩" };
 export const mediaTypes = ["PHYSICAL", "DIGITAL", "OTHER", "UNKNOWN"] as const;
 export const acquisitions = ["PURCHASE", "GIFT", "FREE", "SUBSCRIPTION", "FAMILY_SHARED", "BORROWED", "OTHER", "UNKNOWN"] as const;
 export const accessStatuses = ["ACTIVE", "EXPIRED", "RETURNED", "REVOKED", "UNKNOWN"] as const;

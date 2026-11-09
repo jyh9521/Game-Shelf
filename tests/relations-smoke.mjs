@@ -175,7 +175,7 @@ try {
     await page.getByRole("dialog", { name: "游戏详情", exact: true }).getByRole("button", { name: "关闭", exact: true }).click();
     await page.getByRole("button", { name: "备份与恢复" }).click();
     await page.locator('input[type="file"]').setInputFiles({ name: "legacy-v1.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(legacyBackup)) });
-    await expect(page.locator(".restore-preview")).toContainText("v1 备份将迁移为 v2");
+    await expect(page.locator(".restore-preview")).toContainText("v1 备份将迁移为 v3");
     assert.deepEqual(errors, []); assert.deepEqual(external, []);
     await browser.close(); browser = undefined;
 
@@ -208,9 +208,9 @@ try {
     for (const game of (await call("backup")).games) await call(`games/${game.id}`, "DELETE");
     cookie = ownCookie;
     await link(remake.id, original);
-    const backup = await call("backup"); assert.equal(backup.schema_version, 2); assert.ok(backup.relationHistory.length > backup.relations.length);
+    const backup = await call("backup"); assert.equal(backup.schema_version, 3); assert.ok(backup.relationHistory.length > backup.relations.length);
     assert.ok(!/passwordHash|tokenHash|userId/.test(JSON.stringify(backup)));
-    writeFileSync(resolve(dir, "demo-backup-v2.json"), JSON.stringify(backup, null, 2));
+    writeFileSync(resolve(dir, "demo-backup-v3.json"), JSON.stringify(backup, null, 2));
     const preview = await call("backup/preview", "POST", backup);
     assert.equal(preview.relations, backup.relations.length); assert.equal(preview.relationHistory, backup.relationHistory.length);
     for (const game of backup.games) await call(`games/${game.id}`, "DELETE");
@@ -225,16 +225,16 @@ try {
       assert.equal((await call("games")).total, 0); assert.equal(await db.gameRelationEvent.count({ where: { userId: "admin" } }), 0);
     }
     await call("backup/restore", "POST", backup);
-    assert.deepEqual(stable(await call("backup")), stable(backup), "v2 restore retains exact graph, audit history and independent personal data");
+    assert.deepEqual(stable(await call("backup")), stable(backup), "v3 restore retains exact graph, audit history and independent personal data");
     assert.equal((await call("backup/restore", "POST", { ...backup, relations: [...backup.relations].reverse(), relationHistory: [...backup.relationHistory].reverse() })).duplicate, true);
     // Fresh v1 restoration (not the old idempotency marker) also upgrades cleanly.
     for (const game of backup.games) await call(`games/${game.id}`, "DELETE");
     const v1 = { ...legacyBackup, profiles: legacyBackup.profiles.map(p => ({ ...p, memo: "v1 空库恢复" })) };
     assert.equal((await call("backup/restore", "POST", v1)).games, 1);
-    const v2 = await call("backup"); assert.equal(v2.schema_version, 2); assert.deepEqual(v2.relations, []); assert.deepEqual(v2.relationHistory, []);
-    const { relations, relationHistory, ...rest } = v2; assert.deepEqual(stable({ ...rest, schema_version: 1 }), stable(v1));
+    const v3 = await call("backup"); assert.equal(v3.schema_version, 3); assert.deepEqual(v3.relations, []); assert.deepEqual(v3.relationHistory, []);
+    const { relations, relationHistory, fieldHistory, ...rest } = v3; assert.deepEqual(fieldHistory, []); assert.deepEqual(stable({ ...rest, schema_version: 1 }), stable(v1));
     assert.equal(hash(readFileSync(tokenFile)), hash(token));
-    console.log(`MODIFIED PASS HTTP=${checks}; upgrade=legacy-data,session,token-preserved; relations=CRUD,direction,history,cycle-validation; backup=v1-migration,v2-roundtrip,atomic-rejection,idempotency; isolation=pass; UI=desktop,390px,candidate-pagination; external-requests=0; personal-db=untouched`);
+    console.log(`MODIFIED PASS HTTP=${checks}; upgrade=legacy-data,session,token-preserved; relations=CRUD,direction,history,cycle-validation; backup=v1-migration,v3-roundtrip,atomic-rejection,idempotency; isolation=pass; UI=desktop,390px,candidate-pagination; external-requests=0; personal-db=untouched`);
   }
   console.log(`QA_ARTIFACTS=${dir}`);
 } finally {

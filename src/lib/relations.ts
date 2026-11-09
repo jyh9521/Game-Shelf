@@ -4,7 +4,6 @@ import type { z } from "zod";
 import { db } from "./db";
 import { RelationError, relationInput, relationEditInput, validateRelationGraph } from "./relation-domain";
 
-const titles = { select: { id: true, title: true, localizedTitle: true } } as const;
 async function requireGames(tx: Prisma.TransactionClient, userId: string, ids: string[]) {
   const unique = [...new Set(ids)];
   if (await tx.userGameProfile.count({ where: { userId, gameId: { in: unique } } }) !== unique.length) {
@@ -16,11 +15,17 @@ export async function listRelations(userId: string, gameId: string) {
     await requireGames(tx, userId, [gameId]);
     const where = { userId, OR: [{ sourceGameId: gameId }, { targetGameId: gameId }],
       source: { profiles: { some: { userId } } }, target: { profiles: { some: { userId } } } };
-    const include = { source: titles, target: titles };
-    return {
-      relations: await tx.gameRelation.findMany({ where, include, orderBy: [{ createdAt: "asc" }, { id: "asc" }] }),
-      history: await tx.gameRelationEvent.findMany({ where, include, orderBy: [{ createdAt: "desc" }, { revision: "desc" }, { id: "asc" }], take: 100 })
-    };
+    const relations = await tx.gameRelation.findMany({ where, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+    const history = await tx.gameRelationEvent.findMany({ where, orderBy: [{ createdAt: "desc" }, { revision: "desc" }, { id: "asc" }], take: 100 });
+    const ids = [...new Set([...relations, ...history].flatMap(r => [r.sourceGameId, r.targetGameId]))];
+    const titleFields = { title: true, localizedTitle: true } as const;
+    const profiles = await tx.userGameProfile.findMany({
+      where: { userId, gameId: { in: ids } }, select: { gameId: true, game: { select: titleFields }, metadata: { select: titleFields } }
+    });
+    const titles = new Map(profiles.map(p => [p.gameId, { id: p.gameId, ...(p.metadata ?? p.game) }]));
+    const attach = <T extends { sourceGameId: string; targetGameId: string }>(r: T) =>
+      ({ ...r, source: titles.get(r.sourceGameId)!, target: titles.get(r.targetGameId)! });
+    return { relations: relations.map(attach), history: history.map(attach) };
   });
 }
 export async function createRelation(userId: string, sourceGameId: string, input: z.infer<typeof relationInput>) {

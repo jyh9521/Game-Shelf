@@ -2,14 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { db, ready } from "@/lib/db";
 import { currentUser, newSession, cookie, hashPassword, verifyPassword, secureCompare, hashToken, sessionToken } from "@/lib/auth";
-import { createInput, gameInput, ownershipInput, releaseInput, defaultPlatforms, defaultStores, normalize } from "@/lib/domain";
-import { addOwnership, editContent, ownsGame, saveGame } from "@/lib/library";
+import { ownershipInput, releaseInput, defaultPlatforms, defaultStores } from "@/lib/domain";
+import { addOwnership, editContent, ownsGame } from "@/lib/library";
 import { buildLibraryQuery, buildLibraryFilterOptions } from "@/lib/library-query";
 import { backupSchema, validateReferences, exportBackup, restoreBackup } from "@/lib/backup";
 import { randomUUID } from "node:crypto";
 import { getSetupToken, withBootstrapLock } from "@/lib/bootstrap";
 import { relationInput, relationEditInput, RelationError } from "@/lib/relation-domain";
 import { listRelations, createRelation, changeRelation } from "@/lib/relations";
+import { createGame, effectiveGame, reportFields, unlockField, updateGame } from "@/lib/game-metadata";
+import { createGameInput, previewInput, searchInput, unlockInput, updateGameInput } from "@/lib/metadata-domain";
+import { metadataService } from "@/lib/metadata-service";
+import { MetadataError } from "@/lib/metadata-http";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
 class HttpError extends Error { constructor(public status:number,message:string){super(message);} }
@@ -73,35 +77,43 @@ async function handle(req:NextRequest,context:{params:Promise<{path:string[]}>})
       return result({ok:true},200,{"Set-Cookie":cookie("",true)});
     }
     if(key==="catalog" && method==="GET")return result({platforms:await db.platform.findMany(),stores:await db.store.findMany()});
+    if(key==="metadata/providers" && method==="GET")return result({providers:metadataService().status()});
+    if(key==="metadata/search" && method==="POST"){
+      const {provider,query}=searchInput.parse(await body(req));
+      return result({items:await metadataService().search(user.id,provider,query)});
+    }
+    if(key==="metadata/preview" && method==="POST"){
+      const {provider,id}=previewInput.parse(await body(req));
+      return result({items:await metadataService().preview(user.id,provider,id)});
+    }
     if(key==="platforms" && method==="POST"){
       const input=z.object({name:z.string().trim().min(1).max(120)}).strict().parse(await body(req));
       return result(await db.platform.create({data:{id:randomUUID(),name:input.name}}),201);
     }
     if(key==="games" && method==="GET"){
       const {where,orderBy,page}=buildLibraryQuery(req.nextUrl.searchParams,user.id);
-      const total=await db.game.count({where});
-      const items=await db.game.findMany({where,orderBy,skip:(page-1)*24,take:24,
-        include:{profiles:{where:{userId:user.id}},releases:{include:{platform:true,contents:{where:{item:{userId:user.id}},include:{item:{include:{store:true}},edition:true}}}}}});
+      const total=await db.userGameProfile.count({where});
+      const profiles=await db.userGameProfile.findMany({where,orderBy,skip:(page-1)*24,take:24,
+        include:{metadata:true,game:{include:{releases:{include:{platform:true,contents:{where:{item:{userId:user.id}},include:{item:{include:{store:true}},edition:true}}}}}}}});
+      const items=profiles.map(p=>effectiveGame(p.game,p));
       // 候选来自当前用户的完整库，而不是当前页或当前筛选结果。
-      const genres=await db.game.groupBy({by:["genre"],where:{profiles:{some:{userId:user.id}}}});
+      const genres=await db.userGameMetadata.groupBy({by:["genre"],where:{profile:{userId:user.id}}});
       const dates=await db.release.groupBy({by:["releaseDate"],where:{game:{profiles:{some:{userId:user.id}}},contents:{some:{item:{userId:user.id}}}}});
       return result({items,total,page:Math.floor(page),pages:Math.max(1,Math.ceil(total/24)),filters:buildLibraryFilterOptions(genres,dates)});
     }
-    if(key==="games" && method==="POST"){
-      const input=createInput.parse(await body(req));const {ownership,...fields}=input;
-      // 作品与拥有记录在同一事务创建，失败不留下孤立作品。
-      const id=randomUUID();const {status,rating,favorite,memo,...metadata}=fields;
-      const game=await db.$transaction(async tx=>{
-        const g=await tx.game.create({data:{id,...metadata,searchText:normalize([metadata.title,metadata.originalTitle,metadata.localizedTitle,metadata.developer,metadata.publisher].join(" "))}});
-        await tx.userGameProfile.create({data:{id:randomUUID(),userId:user.id,gameId:id,status,rating,favorite,memo,
-          overridesJson:JSON.stringify(Object.fromEntries(Object.entries(metadata).map(([k,v])=>[k,{mode:"MANUAL_OVERRIDE",value:v}])))} });
-        await addOwnership(tx,user.id,id,ownership);return g;
-      });return result(game,201);
-    }
+    if(key==="games" && method==="POST")return result(await createGame(user.id,createGameInput.parse(await body(req))),201);
     if(path[0]==="games" && path[1]){
       const id=path[1];if(!await ownsGame(user.id,id))throw new HttpError(404,"游戏不存在");
-      if(path.length===2 && method==="GET")return result(await db.game.findUnique({where:{id},include:{profiles:{where:{userId:user.id}},releases:{include:{platform:true,editions:true,contents:{where:{item:{userId:user.id}},include:{item:{include:{store:true}},edition:true}}}}}}));
-      if(path.length===2 && method==="PUT")return result(await saveGame(user.id,gameInput.parse(await body(req)),id));
+      if(path.length===2 && method==="GET"){
+        const p=await db.userGameProfile.findUnique({where:{userId_gameId:{userId:user.id,gameId:id}},
+          include:{metadata:true,game:{include:{releases:{include:{platform:true,editions:true,contents:{where:{item:{userId:user.id}},include:{item:{include:{store:true}},edition:true}}}}}}}});
+        if(!p)throw new HttpError(404,"游戏不存在");
+        return result(effectiveGame(p.game,p));
+      }
+      if(path.length===2 && method==="PUT")return result(await updateGame(user.id,id,updateGameInput.parse(await body(req))));
+      if(path.length===3 && path[2]==="fields" && method==="GET")return result(await reportFields(user.id,id));
+      if(path.length===4 && path[2]==="fields" && path[3]==="unlock" && method==="POST")
+        return result(await unlockField(user.id,id,unlockInput.parse(await body(req))));
       if(path.length===2 && method==="DELETE"){
         await db.$transaction(async tx=>{
           const contents=await tx.libraryItemContent.findMany({where:{release:{gameId:id},item:{userId:user.id}}});
@@ -144,15 +156,18 @@ async function handle(req:NextRequest,context:{params:Promise<{path:string[]}>})
     if(key==="backup" && method==="GET")return result(await exportBackup(user.id),200,{"Content-Disposition":`attachment; filename="gameshelf-${new Date().toISOString().slice(0,10)}.json"`});
     if(key==="backup/preview" && method==="POST"){
       const raw=await body(req),b=backupSchema.parse(raw);validateReferences(b);
-      return result({games:b.games.length,items:b.items.length,relations:b.relations.length,relationHistory:b.relationHistory.length,schemaVersion:b.schema_version,migratedFrom:raw.schema_version===1?1:null,empty:await db.game.count()===0});
+      return result({games:b.games.length,items:b.items.length,relations:b.relations.length,relationHistory:b.relationHistory.length,
+        fieldHistory:b.fieldHistory.length,schemaVersion:b.schema_version,migratedFrom:raw.schema_version===3?null:raw.schema_version,empty:await db.game.count()===0});
     }
     if(key==="backup/restore" && method==="POST")return result(await restoreBackup(backupSchema.parse(await body(req)),user.id));
     throw new HttpError(404,"接口不存在");
   }catch(error){
     if(error instanceof HttpError)return result({error:error.message},error.status);
     if(error instanceof RelationError)return result({error:error.message},error.status);
+    if(error instanceof MetadataError)return result({error:error.message},error.status,error.retryAt?
+      {"Retry-After":String(Math.max(1,Math.ceil((error.retryAt-Date.now())/1000)))}:{});
     if(error instanceof z.ZodError)return result({error:"数据校验失败",details:error.issues.map(i=>`${i.path.join(".")}: ${i.message}`)},400);
-    if(error instanceof Error && /平台不存在|商店不存在|恢复要求空库|悬空引用|重复|Edition 不属于|缺少/.test(error.message))return result({error:error.message},400);
+    if(error instanceof Error && /平台不存在|商店不存在|恢复要求空库|悬空引用|重复|Edition 不属于|缺少|字段历史/.test(error.message))return result({error:error.message},400);
     console.error("API failure",error instanceof Error?error.name:"unknown");return result({error:"操作失败，请检查输入或服务器状态"},500);
   }
 }

@@ -4,12 +4,12 @@ import { buildLibraryQuery, buildLibraryFilterOptions } from "../src/lib/library
 
 test("类型是完整的现有值，未分类与名为 unknown 的类型互不冲突",()=>{
   for(const genre of ["RPG","动作 / 冒险","unknown","  RPG  ","未分类"]){
-    assert.equal(buildLibraryQuery(new URLSearchParams({genre}),"owner").where.genre,genre);
+    assert.deepEqual(buildLibraryQuery(new URLSearchParams({genre}),"owner").where.metadata,{genre});
   }
-  assert.equal(buildLibraryQuery(new URLSearchParams("unclassified=true"),"owner").where.genre,"");
+  assert.deepEqual(buildLibraryQuery(new URLSearchParams("unclassified=true"),"owner").where.metadata,{genre:""});
   for(const value of ["","genre=&year=&unclassified=false"]){
     const query=buildLibraryQuery(new URLSearchParams(value),"owner");
-    assert.equal(query.where.genre,undefined);assert.equal(query.where.releases,undefined);
+    assert.equal(query.where.metadata,undefined);assert.equal(query.where.game,undefined);
   }
   assert.throws(()=>buildLibraryQuery(new URLSearchParams("genre=RPG&unclassified=true"),"owner"));
   assert.throws(()=>buildLibraryQuery(new URLSearchParams({genre:"a".repeat(501)}),"owner"));
@@ -18,16 +18,17 @@ test("类型是完整的现有值，未分类与名为 unknown 的类型互不�
 
 test("年份与平台及拥有条件绑定同一发行和条目，不跨版本凑条件",()=>{
   const q=buildLibraryQuery(new URLSearchParams("genre=RPG&year=2005&platform=PC&store=STEAM&mediaType=DIGITAL&acquisitionType=PURCHASE&accessStatus=ACTIVE&rating=5&status=CLEARED&favorite=true&page=2&sort=title_asc"),"owner");
-  assert.equal(q.where.genre,"RPG");
-  assert.deepEqual(q.where.releases,{some:{platformId:"PC",releaseDate:{startsWith:"2005"},contents:{some:{item:{userId:"owner",storeId:"STEAM",mediaType:"DIGITAL",acquisitionType:"PURCHASE",accessStatus:"ACTIVE"}}}}});
-  assert.deepEqual(q.where.profiles,{some:{userId:"owner",status:"CLEARED",favorite:true,rating:5}});
-  assert.equal(q.page,2);assert.deepEqual(q.orderBy,[{title:"asc"},{id:"asc"}]);
+  const {game,metadata,...profile}=q.where;
+  assert.deepEqual(metadata,{genre:"RPG"});
+  assert.deepEqual(game,{releases:{some:{platformId:"PC",releaseDate:{startsWith:"2005"},contents:{some:{item:{userId:"owner",storeId:"STEAM",mediaType:"DIGITAL",acquisitionType:"PURCHASE",accessStatus:"ACTIVE"}}}}}});
+  assert.deepEqual(profile,{userId:"owner",status:"CLEARED",favorite:true,rating:5});
+  assert.equal(q.page,2);assert.deepEqual(q.orderBy,[{metadata:{title:"asc"}},{gameId:"asc"}]);
 });
 
 test("未知年份只匹配本人拥有的未知日期，合法四位年份保留精度",()=>{
-  assert.deepEqual(buildLibraryQuery(new URLSearchParams("year=unknown"),"owner").where.releases,{some:{releaseDate:"",contents:{some:{item:{userId:"owner"}}}}});
+  assert.deepEqual(buildLibraryQuery(new URLSearchParams("year=unknown"),"owner").where.game,{releases:{some:{releaseDate:"",contents:{some:{item:{userId:"owner"}}}}}});
   for(const year of ["0001","1900","2000","2005","9999"]){
-    assert.deepEqual(buildLibraryQuery(new URLSearchParams({year}),"u").where.releases,{some:{releaseDate:{startsWith:year},contents:{some:{item:{userId:"u"}}}}});
+    assert.deepEqual(buildLibraryQuery(new URLSearchParams({year}),"u").where.game,{releases:{some:{releaseDate:{startsWith:year},contents:{some:{item:{userId:"u"}}}}}});
   }
   for(const year of ["0","0000","5","200","20050","2005-01"," 2005 ","２００５","UNKNOWN","NaN","20%_"]){
     assert.throws(()=>buildLibraryQuery(new URLSearchParams({year}),"u"),year);
