@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/client-api";
 import { fieldLabels, metadataFields, providerLabels, providerLink, type Metadata, type MetadataField, type Preview, type Provider, type ProviderStatus, type SearchHit } from "@/lib/metadata-domain";
 
@@ -10,7 +10,7 @@ export function SourceLink({ provider, id }: { provider: Provider; id?: string }
 
 export function MetadataLookup({ title, draft, protectedFields, disabled, onStage }: {
   title: string; draft: Metadata; protectedFields: Set<MetadataField>; disabled: boolean;
-  onStage: (preview: Preview, fields: MetadataField[]) => void;
+  onStage: (preview: Preview, fields: MetadataField[], replaceCover?: boolean) => void;
 }) {
   const [services, setServices] = useState<ProviderStatus[] | null>(null);
   const [provider, setProvider] = useState<Provider | "">("");
@@ -22,7 +22,11 @@ export function MetadataLookup({ title, draft, protectedFields, disabled, onStag
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const gallery = useRef<HTMLElement>(null);
   const loading = disabled || busy;
+  useEffect(() => {
+    if (provider === "steamgriddb" && previews !== null) gallery.current?.scrollIntoView({ block: "nearest" });
+  }, [provider, previews]);
 
   async function work(action: () => Promise<void>) {
     setBusy(true);
@@ -53,9 +57,14 @@ export function MetadataLookup({ title, draft, protectedFields, disabled, onStag
       setChecked(metadataFields.filter(field => !!items[0]?.candidate.fields[field]));
     });
   };
-  const stage = (p: Preview, fields: MetadataField[]) => {
-    onStage(p, fields);
-    setNotice("已暂存 " + fields.length + " 个字段，保存游戏后生效。");
+  const stage = (p: Preview, fields: MetadataField[], replaceCover = false) => {
+    onStage(p, fields, replaceCover);
+    setNotice(provider === "steamgriddb" ? "已选封面，保存游戏后生效。" : "已暂存 " + fields.length + " 个字段，保存游戏后生效。");
+  };
+  const pickCover = (p: Preview) => {
+    const replacingProtected = protectedFields.has("coverUrl");
+    if (replacingProtected && !confirm("当前封面已锁定或在本次编辑中手动修改。用选中的图片替换它？保存后生效。")) return;
+    stage(p, ["coverUrl"], replacingProtected);
   };
 
   return <details className="metadata-panel" onToggle={e => {
@@ -66,7 +75,8 @@ export function MetadataLookup({ title, draft, protectedFields, disabled, onStag
     {services === null && <p className="muted">{busy ? "正在读取资料源…" : <button type="button" onClick={() => void load()}>重新读取资料源</button>}</p>}
     {services && !provider && <p className="muted">容器未配置外部资料源，仍可手动填写。配置方式见部署文档。</p>}
     {services && !!provider && <>
-      <p className="muted">前四个服务提供游戏资料；SteamGridDB 只提供封面。选择候选后，已锁定或本次手动改过的字段会保留当前值。</p>
+      <p className="muted">{provider === "steamgriddb" ? "先选作品，再选竖版封面。替换已锁定的封面时需要确认；保存游戏后生效。" :
+        "资料候选不会自动覆盖已锁定或本次手动改过的字段。"}</p>
       <div className="metadata-search">
         <label>资料源<select value={provider} disabled={loading} onChange={e => { setProvider(e.target.value as Provider); resetResults(); }}>
           {services.map(s => <option key={s.id} value={s.id} disabled={!s.enabled}>{providerLabels[s.id]}{s.enabled ? "" : "（未配置）"}</option>)}
@@ -84,14 +94,23 @@ export function MetadataLookup({ title, draft, protectedFields, disabled, onStag
           <small>{[...hit.platforms, hit.date, hit.region, hit.kind, "ID " + hit.id].filter(Boolean).join(" · ")}</small>
         </button>)}
       </div>}
-      {previews && !previews.length && <p className="muted">该条目暂无可导入的{provider === "steamgriddb" ? "竖版封面" : "字段"}。</p>}
-      {!!previews?.length && provider === "steamgriddb" && <div className="metadata-covers" aria-label="SteamGridDB 封面候选">
-        {previews.map((p, i) => <figure key={p.candidate.externalId}>
-          <img src={p.image?.thumbnail} alt={active?.title + " 候选封面 " + (i + 1)} loading="lazy" referrerPolicy="no-referrer"/>
-          <figcaption><SourceLink provider={provider} id={p.candidate.externalId}/>{p.image?.width && p.image.height ? " · " + p.image.width + "×" + p.image.height : " · 竖版"}</figcaption>
-          <button type="button" disabled={loading} onClick={() => stage(p, ["coverUrl"])}>选择封面 {i + 1}</button>
-        </figure>)}
-      </div>}
+      {previews && !previews.length && provider !== "steamgriddb" && <p className="muted">该条目暂无可导入的字段。</p>}
+      {previews !== null && active && provider === "steamgriddb" && <section ref={gallery} className="metadata-cover-panel" aria-label="SteamGridDB 封面候选">
+        <div className="metadata-cover-heading"><h3>选择封面</h3><small>{previews.length} 张竖版封面</small></div>
+        {!previews.length && <p className="muted">该条目暂无可导入的竖版封面，可以尝试同名的其他版本。</p>}
+        {!!previews.length && <div className="metadata-covers">
+          {previews.map((p, i) => <figure key={p.candidate.externalId}>
+            <img src={p.image?.thumbnail} alt={active.title + " 候选封面 " + (i + 1)} loading="lazy" referrerPolicy="no-referrer"
+              onError={e => {
+                const full = p.candidate.fields.coverUrl;
+                if (full && e.currentTarget.src !== full) e.currentTarget.src = full;
+              }}/>
+            <figcaption><SourceLink provider={provider} id={p.candidate.externalId}/>{p.image?.width && p.image.height ? " · " + p.image.width + "×" + p.image.height : " · 竖版"}</figcaption>
+            <button type="button" disabled={loading} onClick={() => pickCover(p)}>选择封面 {i + 1}</button>
+          </figure>)}
+        </div>}
+        <a href={"https://www.steamgriddb.com/game/" + encodeURIComponent(active.id) + "/grids"} target="_blank" rel="noreferrer">在 SteamGridDB 查看该条目</a>
+      </section>}
       {!!previews?.length && provider !== "steamgriddb" && <div className="metadata-preview">
         <p>来自 <SourceLink provider={provider} id={previews[0].candidate.externalId}/> 的候选字段</p>
         {active?.date && <p className="muted">来源发行日期：{active.date}（仅供辨认作品，拥有版本仍由你确认）</p>}

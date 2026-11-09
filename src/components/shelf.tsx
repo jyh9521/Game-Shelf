@@ -7,9 +7,11 @@ import { GameRelations } from "./game-relations";
 import { GameEditor } from "./game-editor";
 import { FieldHistory } from "./field-history";
 import { SourceLink } from "./metadata-lookup";
+import { PlatformManager, type PlatformEntry } from "./platform-manager";
 import { effectiveSeconds, statuses, statusLabels, mediaTypes, acquisitions, accessStatuses } from "@/lib/domain";
 import type { Metadata, MetadataField, Selection } from "@/lib/metadata-domain";
-type Catalog={platforms:{id:string;name:string}[];stores:{id:string;name:string}[]};
+type Catalog={platforms:PlatformEntry[];stores:{id:string;name:string}[];canManagePlatforms:boolean};
+const emptyCatalog:Catalog={platforms:[],stores:[],canManagePlatforms:false};
 type ContentEditor={id:string;platformId:string;releaseDate:string;region:string;edition:string};
 type Profile={status:string;rating:number|null;favorite:boolean;memo:string;overridesJson:string};
 type Item={id:string;storeId:string|null;mediaType:string;acquisitionType:string;accessStatus:string;manualTotalOverride:number|null;sourceTotalSeconds:number|null;manualExtraSeconds:number;store:{name:string}|null};
@@ -33,7 +35,7 @@ function ownershipFrom(f:FormData){const val=(k:string)=>String(f.get(k)??"");re
 export default function Shelf(){
   const [auth,setAuth]=useState<{initialized:boolean;user:{username:string}|null}|null>(null);
   const [password,setPassword]=useState("");const [passwordConfirm,setPasswordConfirm]=useState("");const [setupToken,setSetupToken]=useState("");
-  const [catalog,setCatalog]=useState<Catalog>({platforms:[],stores:[]});
+  const [catalog,setCatalog]=useState<Catalog>(emptyCatalog);
   const [view,setView]=useState("library");const [games,setGames]=useState<Game[]>([]);
   const [total,setTotal]=useState(0);const [page,setPage]=useState(1);const [pages,setPages]=useState(1);
   const [q,setQ]=useState("");const [platform,setPlatform]=useState("");const [store,setStore]=useState("");const [status,setStatus]=useState("");const [favorite,setFavorite]=useState(false);
@@ -67,10 +69,16 @@ export default function Shelf(){
     await api(editor==="new"?"games":`games/${editor.id}`,editor==="new"?"POST":"PUT",{...data,candidates,manualFields,...(editor==="new"?{ownership:ownershipFrom(f)}:{revision:editor.metadataRevision})});setEditor(null);setDetail(null);await reload();setNotice("已保存，手动填写的资料已受到覆盖保护。");});}
   async function remove(game:Game){if(!confirm(`删除「${game.title}」及其拥有记录、个人状态、备注、作品关系与字段历史？请先备份重要数据。`))return;await run(async()=>{await api(`games/${game.id}`,"DELETE");setDetail(null);await reload();setNotice("游戏已删除。");});}
   async function readBackup(file:File){if(file.size>10*1024*1024){setError("备份超过 10 MiB，当前版本不支持该文件大小。");return;}setBackup(null);setPreview(null);await run(async()=>{const b=JSON.parse(await file.text());const p=await api<BackupPreview>("backup/preview","POST",b);setBackup(b);setPreview(p);});}
+  async function platformChanged(oldId:string|null,nextId:string|null,message:string){
+    setCatalog(await api<Catalog>("catalog"));
+    if(oldId && platform===oldId && nextId!==oldId){setPlatform(nextId??"");setPage(1);}
+    else await reload();
+    setNotice(message);
+  }
   async function logout(){await run(async()=>{
     await api("auth/logout","POST",{});
     requestId.current++;setDetail(null);setEditor(null);setItemEditor(null);setContentEditor(null);setBackup(null);setPreview(null);
-    setGames([]);setLoading(false);setCatalog({platforms:[],stores:[]});setFilterOptions({genres:[],years:[]});setTotal(0);setPage(1);setPages(1);
+    setGames([]);setLoading(false);setCatalog(emptyCatalog);setFilterOptions({genres:[],years:[]});setTotal(0);setPage(1);setPages(1);
     setQ("");setPlatform("");setStore("");setStatus("");setFavorite(false);setRating("");setGenre("");setUnclassified(false);setYear("");
     setMediaType("");setAcquisitionType("");setAccessStatus("");setSort("added_desc");setView("library");
     await refreshAuth();
@@ -121,7 +129,8 @@ export default function Shelf(){
         <div className="card-text"><h2>{g.localizedTitle||g.title}</h2><p>{[...new Set(g.releases.filter(r=>r.contents.length).map(r=>r.platform.name))].join(" · ")||"暂无拥有记录"}</p><div className="card-bottom"><span>{g.genre||"未分类"}</span><span className="rating">{g.profiles[0]?.rating?"★".repeat(g.profiles[0].rating):"未评分"}</span></div></div></button>
         {g.rawgAttributed&&<small className="muted">来源记录：<SourceLink provider="rawg"/></small>}</article>)}</section>}
       <div className="pagination"><span>共 {total} 款作品 · 第 {page} / {pages} 页</span><div><button disabled={page<=1||loading} onClick={()=>setPage(page-1)}>上一页</button><button disabled={page>=pages||loading} onClick={()=>setPage(page+1)}>下一页</button></div></div></>}
-    {view==="platforms"&&<><section className="page-heading"><div><span className="eyebrow">YOUR PLATFORMS</span><h1>跨越平台的收藏<span>.</span></h1><p>平台是发行版本，商店是购买渠道；两者分别保存。</p></div></section><section className="panel"><h2>已登记平台</h2><div className="platform-grid">{catalog.platforms.map(p=><div key={p.id}><span>◇</span><strong>{p.name}</strong><small>{p.id}</small></div>)}</div><form className="inline-form" onSubmit={e=>{e.preventDefault();const form=e.currentTarget;const name=new FormData(form).get("name");void run(async()=>{await api("platforms","POST",{name});setCatalog(await api<Catalog>("catalog"));form.reset();setNotice("平台已添加。");});}}><input name="name" aria-label="新平台名称" placeholder="添加其他平台，如 Sega Saturn" required maxLength={120}/><button className="primary" disabled={busy}>添加平台</button></form></section></>}
+    {view==="platforms"&&<PlatformManager platforms={catalog.platforms} canManage={catalog.canManagePlatforms} busy={busy}
+      onBusyChange={b=>{setBusy(b);if(b){setError("");setNotice("");}}} onChanged={platformChanged}/>}
     {view==="backup"&&<><section className="page-heading"><div><span className="eyebrow">KEEP YOUR COLLECTION</span><h1>收藏值得好好保存<span>.</span></h1><p>备份保存资料与个人记录，不包含密码、会话或服务器密钥。</p></div></section><div className="backup-grid"><section className="panel"><span className="panel-icon">↗</span><h2>导出完整数据</h2><p>导出格式为 v3，包含字段来源、候选值、锁定状态和变更历史，以及作品关系、拥有记录与个人资料。仍可导入 v1/v2。封面仅保存远程链接。</p><button className="primary" disabled={busy} onClick={()=>void run(async()=>{const data=await api("backup");const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:"application/json"}));const a=document.createElement("a");a.href=url;a.download=`gameshelf-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);setNotice("备份已导出，请妥善保存。");})}>下载 JSON 备份</button></section>
       <section className="panel"><span className="panel-icon">↙</span><h2>恢复到空库</h2><p>先校验格式与所有关系，再一次性恢复。现有游戏库不会被覆盖；如需恢复，使用新的空实例。</p><label className="file-picker">选择 JSON 备份<input type="file" accept=".json,application/json" onChange={e=>{const f=e.target.files?.[0];if(f)void readBackup(f);}}/></label>{preview&&<div className="restore-preview"><strong>{preview.games} 款作品 · {preview.items} 个拥有记录 · {preview.relations} 条作品关系 · {preview.relationHistory} 条判定历史 · {preview.fieldHistory} 条字段历史</strong>{preview.migratedFrom&&<p>v{preview.migratedFrom} 备份将迁移为 v3；保留原有资料，不生成来源候选。{preview.migratedFrom===1&&"作品关系初始为空。"}</p>}<p>{preview.empty?"目标库为空，可以恢复。":"目标库非空，恢复操作将被拒绝；同一已导入备份可幂等重试。"}</p><button className="primary" disabled={busy} onClick={()=>{if(confirm("确认恢复这份备份？"))void run(async()=>{const r=await api<{duplicate:boolean}>("backup/restore","POST",backup);setNotice(r.duplicate?"该备份已导入，没有重复创建记录。":"恢复成功，所有关系与个人资料已保留。");setPreview(null);setBackup(null);setCatalog(await api<Catalog>("catalog"));await reload();});}}>确认恢复</button></div>}</section></div></>}
     <footer className="page-footer">YOUR GAMES. YOUR SERVER. YOUR STORY.<span>GameShelf / 个人收藏工程</span></footer></main>

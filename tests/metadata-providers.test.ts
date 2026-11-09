@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { MetadataService } from "../src/lib/metadata-service";
 import { MetadataError } from "../src/lib/metadata-http";
 import { searchInput, previewInput } from "../src/lib/metadata-domain";
-import { fixture, env, title, coverUrl, thumbUrl } from "./metadata-fixtures.cjs";
+import { fixture, env, title, coverUrl, thumbUrl, zelda } from "./metadata-fixtures.cjs";
 
 test("资料源由服务端变量单独启用；半套 IGDB / ScreenScraper 凭据不会发起请求", async () => {
   const service = new MetadataService({ IGDB_CLIENT_ID: "half", SCREENSCRAPER_DEV_ID: "id", SCREENSCRAPER_DEV_PASSWORD: "pw",
@@ -56,6 +56,15 @@ test("SteamGridDB 只返回竖版封面；筛掉非 CDN、带查询参数和横�
   assert.equal(a.image?.thumbnail, thumbUrl);
   assert.equal(b.candidate.externalId, "604"); assert.equal(b.image?.width, undefined);
   assert.throws(() => service.resolve("a", [{ token: a.token, fields: ["title"] }]), (e: MetadataError) => e.status === 400);
+});
+test("SteamGridDB 时之笛条目 21202 的官方 cdn2 竖版图能进入候选，而仿冒域名和带令牌地址仍被排除", async () => {
+  const service = new MetadataService(env, fixture() as typeof fetch);
+  const [hit] = await service.search("qa", "steamgriddb", zelda.title);
+  assert.equal(hit.id, zelda.id);
+  const items = await service.preview("qa", "steamgriddb", hit.id);
+  assert.deepEqual(items.map(p => p.candidate.externalId), [zelda.grid]);
+  assert.deepEqual(items[0].candidate.fields, { coverUrl: zelda.cover });
+  assert.equal(items[0].image?.thumbnail, zelda.thumb);
 });
 test("重复查询共用缓存；候选令牌绑定会话用户，不能伪造、跨用户或重复字段", async () => {
   const calls: string[] = [];

@@ -4,13 +4,15 @@
 
 ## 当前状态
 
-当前版本与部署模板为 **0.1.7**。从 0.1.6 升级、镜像信息与回退方式见 [0.1.7 发布说明](docs/releases/0.1.7.md)。
+当前版本与部署模板为 **0.1.8**。从 0.1.7 升级、镜像信息与回退方式见 [0.1.8 发布说明](docs/releases/0.1.8.md)。
 
 已实现管理员初始化与登录、作品增删改、多平台拥有记录、单份发行版本编辑、载体 / 获取方式 / 访问状态筛选、排序分页、状态评分与备注、标题别名搜索，以及 JSON 备份预览与空库恢复。
 
 已发布的 0.1.6 包含**原作 / 重制 / 复刻关系**：双向展示、搜索库内原作、编辑 / 解除关系和判定历史；作品与评分保持独立。JSON 导出为 **v2**，仍兼容 v1 备份，详见[作品关系与备份 v2](docs/GAME_RELATIONS.md)。
 
 0.1.7 新增**外部游戏资料、封面查找与字段历史**：通过 Docker 变量单独启用 IGDB、RAWG、TheGamesDB、ScreenScraper；SteamGridDB 只提供封面。导出升级为 **v3**，兼容 v1/v2。配置和操作见[外部资料源](docs/METADATA.md)。
+
+0.1.8 修复 SteamGridDB 官方图片被过滤的问题，并支持编辑平台名称和代号、删除未使用的平台。已有拥有记录保留，不增加数据库迁移。
 
 保留 0.1.5 的类型、未分类、拥有版本年份与未知年份筛选，组合条件绑定同一份拥有记录，候选随编辑刷新。详见[中间报告演示流程](docs/DEMO.md)与[开发进度](docs/PROGRESS.md)。
 
@@ -20,7 +22,7 @@
 
 ## 下载 / 部署
 
-公开镜像：[jyh9521/gameshelf](https://hub.docker.com/r/jyh9521/gameshelf)，固定版本 `jyh9521/gameshelf:0.1.7`，平台 **linux/amd64**。没有 GitHub Release 安装包。
+公开镜像：[jyh9521/gameshelf](https://hub.docker.com/r/jyh9521/gameshelf)，固定版本 `jyh9521/gameshelf:0.1.8`，平台 **linux/amd64**。没有 GitHub Release 安装包。
 
 ### Docker Compose
 
@@ -47,7 +49,7 @@ SQLite 应放在服务器本地文件系统，不直接使用 SMB / NFS / WebDAV
 
 ### Unraid
 
-使用 [unraid/gameshelf.xml](unraid/gameshelf.xml) 模板，镜像地址为 `jyh9521/gameshelf:0.1.7`。从旧容器升级时保留原挂载、端口、运行 UID/GID 与代理设置；需要哪个外部服务，就添加对应的 Docker Variable。
+使用 [unraid/gameshelf.xml](unraid/gameshelf.xml) 模板，镜像地址为 `jyh9521/gameshelf:0.1.8`。从旧容器升级时保留原挂载、端口、运行 UID/GID、代理设置和已配置的 API 变量。
 
 默认映射 `/mnt/user/appdata/gameshelf` → `/data`，UID/GID 为 `99:100`；按实际存储池与端口调整。首次初始化凭据位于 `/mnt/user/appdata/gameshelf/setup-token`。模板未声称已收录 Unraid 应用商店，实机验收仍待完成。
 
@@ -83,6 +85,7 @@ docker compose config --quiet
 npm run test:weekly
 npm run test:relations
 npm run test:metadata
+npm run test:cover-platforms
 npm run test:release
 ```
 
@@ -92,7 +95,7 @@ npm run test:release
 
 `npm run test:metadata` 用合成供应商响应验证五个服务、游戏资料和封面确认、字段历史与解除锁定、备份 v1/v2/v3、两账号隔离及桌面 / 手机。不会调用真实供应商或使用个人凭据。
 
-`npm run test:release` 使用独立 Docker QA 卷验证 0.1.6 → 0.1.7、旧库与会话保留、五项服务的合成 API 交互、变量更改后的容器重建、v2/v3 恢复和升级前快照回退，不访问个人容器。
+`npm run test:cover-platforms` 在隔离库上检查 SteamGridDB 官方 CDN 形状、桌面 / 手机选图、平台编辑删除和备份往返。`npm run test:release` 使用独立 Docker QA 卷验证 0.1.7 → 0.1.8、旧库和会话保留、封面与平台修复、重建和升级前快照回退。
 
 `tests/api-integration.mjs` 与 `tests/ui-smoke.mjs` 需要独立空测试库和端口 3100，包含创建、删除与恢复测试数据的操作，不用于个人实例。UI 测试使用已安装 Chrome；截图和测试备份写入忽略提交的 `engineering/`。万条数据基准只代表测试主机与样本，不等同于 Unraid 性能。
 

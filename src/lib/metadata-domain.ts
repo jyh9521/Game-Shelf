@@ -22,10 +22,11 @@ export function providerLink(provider: Provider, id?: string): string {
     case "steamgriddb": return id ? "https://www.steamgriddb.com/grid/" + encodeURIComponent(id) : "https://www.steamgriddb.com/";
   }
 }
+const gridImageOrigins = new Set(["https://cdn.steamgriddb.com", "https://cdn2.steamgriddb.com"]);
 export function isGridImage(value: string) {
   try {
     const url = new URL(value);
-    return url.origin === "https://cdn.steamgriddb.com" && !url.username && !url.password &&
+    return gridImageOrigins.has(url.origin) && !url.username && !url.password &&
       !url.search && !url.hash && /^\/(?:grid|thumb)\/[a-zA-Z0-9_.-]+\.(?:png|jpe?g|webp)$/i.test(url.pathname);
   } catch { return false; }
 }

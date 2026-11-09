@@ -18,6 +18,13 @@ const env = {
 const coverUrl = "https://cdn.steamgriddb.com/grid/fixture-portrait.png";
 const thumbUrl = "https://cdn.steamgriddb.com/thumb/fixture-portrait.png";
 const title = "QA 星港远航";
+// Public artwork URL shape observed for game 21202 / grid 787839. The
+// fixtures and browser tests do not download any artwork or use a real key.
+const zelda = {
+  title: "The Legend of Zelda: Ocarina of Time", id: "21202", grid: "787839",
+  cover: "https://cdn2.steamgriddb.com/grid/8fff7c872b733893a1a891be7c26c18c.png",
+  thumb: "https://cdn2.steamgriddb.com/thumb/8fff7c872b733893a1a891be7c26c18c.jpg"
+};
 const ports = { PC: "PC", SS: "Sega Saturn", PS5: "PlayStation 5" };
 
 /** @param {{ revokeOnce?: boolean, log?: (path: string) => void }} [options] */
@@ -108,11 +115,22 @@ function fixture({ revokeOnce = false, log = () => {} } = {}) {
     }
     if (u.hostname === "www.steamgriddb.com") {
       assert.equal(headers.get("Authorization"), "Bearer " + env.STEAMGRIDDB_API_KEY);
-      if (u.pathname.startsWith("/api/v2/search/autocomplete/")) return json({ success: true, data: [{ id: 501, name: title, verified: true }] });
-      assert.equal(u.pathname, "/api/v2/grids/game/501");
+      if (u.pathname.startsWith("/api/v2/search/autocomplete/")) {
+        if (decodeURIComponent(u.pathname.split("/").at(-1)) === zelda.title) {
+          return json({ success: true, data: [{ id: 21202, name: zelda.title }, { id: 5532594, name: zelda.title }] });
+        }
+        return json({ success: true, data: [{ id: 501, name: title, verified: true }] });
+      }
+      assert.ok(["/api/v2/grids/game/501", "/api/v2/grids/game/21202", "/api/v2/grids/game/5532594"].includes(u.pathname));
       assert.equal(params.get("types"), "static"); assert.equal(params.get("nsfw"), "false");
       assert.equal(params.get("epilepsy"), "false"); assert.equal(params.get("humor"), "false");
       assert.equal(params.get("dimensions"), "600x900,342x482,660x930");
+      if (u.pathname.endsWith("/5532594")) return json({ success: true, data: [] });
+      if (u.pathname.endsWith("/21202")) return json({ success: true, data: [
+        { id: 787839, width: 600, height: 900, url: zelda.cover, thumb: zelda.thumb },
+        { id: 787840, width: 600, height: 900, url: zelda.cover.replace("steamgriddb.com", "steamgriddb.com.invalid") },
+        { id: 787841, width: 600, height: 900, url: zelda.cover + "?token=do-not-return" }
+      ] });
       return json({ success: true, data: [
         { id: 600, width: 920, height: 430, url: coverUrl },
         { id: 601, width: 600, height: 900, url: coverUrl, thumb: thumbUrl },
@@ -135,4 +153,4 @@ if (process.env.GAMESHELF_QA_PROVIDER_LOG) {
     return remote(input, init);
   };
 }
-module.exports = { fixture, env, title, coverUrl, thumbUrl };
+module.exports = { fixture, env, title, coverUrl, thumbUrl, zelda };

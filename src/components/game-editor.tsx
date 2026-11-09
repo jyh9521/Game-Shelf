@@ -7,7 +7,7 @@ import { MetadataLookup, SourceLink } from "./metadata-lookup";
 
 type EditorProfile = { status: string; rating: number | null; favorite: boolean; memo: string; overridesJson: string };
 type EditorGame = Metadata & { rawgAttributed: boolean; profiles: EditorProfile[] };
-type Draft = { values: Metadata; dirty: Set<MetadataField>; staged: Partial<Record<MetadataField, Preview>> };
+type Draft = { values: Metadata; dirty: Set<MetadataField>; staged: Partial<Record<MetadataField, { preview: Preview; before?: string }>> };
 const emptyValues = Object.fromEntries(metadataFields.map(field => [field, ""])) as Metadata;
 
 export function GameEditor({ game, ownership, error, busy, onClose, onSave }: {
@@ -19,20 +19,25 @@ export function GameEditor({ game, ownership, error, busy, onClose, onSave }: {
   const locks = lockedFields(personal?.overridesJson ?? "{}");
   const [draft, setDraft] = useState<Draft>(() => ({ values: initial, dirty: new Set(), staged: {} }));
   const stagedFields = metadataFields.filter(field => draft.staged[field]);
-  const change = (field: MetadataField, value: string) => setDraft(d =>
-    ({ ...d, values: { ...d.values, [field]: value }, dirty: new Set([...d.dirty, field]) }));
-  const stage = (preview: Preview, fields: MetadataField[]) => setDraft(d => {
+  const change = (field: MetadataField, value: string) => setDraft(d => {
+    const existing = d.staged[field];
+    const staged = existing ? { ...d.staged, [field]: { preview: existing.preview } } : d.staged;
+    return { ...d, values: { ...d.values, [field]: value }, dirty: new Set([...d.dirty, field]), staged };
+  });
+  const stage = (preview: Preview, fields: MetadataField[], replaceCover = false) => setDraft(d => {
     const values = { ...d.values }, staged = { ...d.staged };
     for (const field of fields) {
-      staged[field] = preview;
-      if (!locks.has(field) && !d.dirty.has(field)) values[field] = preview.candidate.fields[field]!;
+      const fill = (replaceCover && field === "coverUrl") || (!locks.has(field) && !d.dirty.has(field));
+      staged[field] = { preview, before: fill ? d.staged[field]?.before ?? values[field] : undefined };
+      if (fill) values[field] = preview.candidate.fields[field]!;
     }
     return { ...d, values, staged };
   });
   const clear = (field: MetadataField) => setDraft(d => {
     const staged = { ...d.staged };
+    const previous = staged[field]?.before ?? (d.dirty.has(field) ? undefined : initial[field]);
     delete staged[field];
-    return { ...d, staged, values: d.dirty.has(field) ? d.values : { ...d.values, [field]: initial[field] } };
+    return { ...d, staged, values: previous === undefined ? d.values : { ...d.values, [field]: previous } };
   });
 
   return <div className="modal-backdrop" onClick={() => !busy && onClose()}>
@@ -43,7 +48,7 @@ export function GameEditor({ game, ownership, error, busy, onClose, onSave }: {
         e.preventDefault();
         const selected = new Map<string, Selection>();
         for (const field of stagedFields) {
-          const token = draft.staged[field]!.token;
+          const token = draft.staged[field]!.preview.token;
           const existing = selected.get(token);
           if (existing) existing.fields.push(field);
           else selected.set(token, { token, fields: [field] });
@@ -53,9 +58,9 @@ export function GameEditor({ game, ownership, error, busy, onClose, onSave }: {
         <MetadataLookup title={draft.values.title} draft={draft.values} protectedFields={new Set([...locks, ...draft.dirty])} disabled={busy} onStage={stage}/>
         {stagedFields.length > 0 && <ul className="metadata-staged" aria-label="已暂存的候选字段">
           {stagedFields.map(field => {
-            const c = draft.staged[field]!.candidate;
+            const c = draft.staged[field]!.preview.candidate;
             return <li key={field}>{fieldLabels[field]} · <SourceLink provider={c.provider} id={c.externalId}/>
-              {(locks.has(field) || draft.dirty.has(field)) && "（仅候选）"}
+              {(locks.has(field) || draft.dirty.has(field)) && (draft.values[field] === c.fields[field] ? "（保留锁定）" : "（仅候选）")}
               <button type="button" aria-label={"移除暂存：" + fieldLabels[field]} onClick={() => clear(field)} disabled={busy}>移除</button>
             </li>;
           })}

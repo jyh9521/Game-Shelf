@@ -6,7 +6,6 @@ import { ownershipInput, releaseInput, defaultPlatforms, defaultStores } from "@
 import { addOwnership, editContent, ownsGame } from "@/lib/library";
 import { buildLibraryQuery, buildLibraryFilterOptions } from "@/lib/library-query";
 import { backupSchema, validateReferences, exportBackup, restoreBackup } from "@/lib/backup";
-import { randomUUID } from "node:crypto";
 import { getSetupToken, withBootstrapLock } from "@/lib/bootstrap";
 import { relationInput, relationEditInput, RelationError } from "@/lib/relation-domain";
 import { listRelations, createRelation, changeRelation } from "@/lib/relations";
@@ -14,6 +13,7 @@ import { createGame, effectiveGame, reportFields, unlockField, updateGame } from
 import { createGameInput, previewInput, searchInput, unlockInput, updateGameInput } from "@/lib/metadata-domain";
 import { metadataService } from "@/lib/metadata-service";
 import { MetadataError } from "@/lib/metadata-http";
+import { createPlatform, platformInput, PlatformError, removePlatform, updatePlatform } from "@/lib/platform-catalog";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
 class HttpError extends Error { constructor(public status:number,message:string){super(message);} }
@@ -76,7 +76,8 @@ async function handle(req:NextRequest,context:{params:Promise<{path:string[]}>})
       const token=sessionToken(req);if(token)await db.session.deleteMany({where:{tokenHash:hashToken(token)}});
       return result({ok:true},200,{"Set-Cookie":cookie("",true)});
     }
-    if(key==="catalog" && method==="GET")return result({platforms:await db.platform.findMany(),stores:await db.store.findMany()});
+    const canManagePlatforms=user.id==="admin";
+    if(key==="catalog" && method==="GET")return result({platforms:await db.platform.findMany(),stores:await db.store.findMany(),canManagePlatforms});
     if(key==="metadata/providers" && method==="GET")return result({providers:metadataService().status()});
     if(key==="metadata/search" && method==="POST"){
       const {provider,query}=searchInput.parse(await body(req));
@@ -87,8 +88,12 @@ async function handle(req:NextRequest,context:{params:Promise<{path:string[]}>})
       return result({items:await metadataService().preview(user.id,provider,id)});
     }
     if(key==="platforms" && method==="POST"){
-      const input=z.object({name:z.string().trim().min(1).max(120)}).strict().parse(await body(req));
-      return result(await db.platform.create({data:{id:randomUUID(),name:input.name}}),201);
+      if(!canManagePlatforms)throw new HttpError(403,"仅实例管理员可以管理平台");
+      return result(await createPlatform(platformInput.parse(await body(req))),201);
+    }
+    if(path[0]==="platforms" && path.length===2 && (method==="PUT" || method==="DELETE")){
+      if(!canManagePlatforms)throw new HttpError(403,"仅实例管理员可以管理平台");
+      return result(method==="PUT" ? await updatePlatform(path[1],platformInput.parse(await body(req))) : await removePlatform(path[1]));
     }
     if(key==="games" && method==="GET"){
       const {where,orderBy,page}=buildLibraryQuery(req.nextUrl.searchParams,user.id);
@@ -163,7 +168,7 @@ async function handle(req:NextRequest,context:{params:Promise<{path:string[]}>})
     throw new HttpError(404,"接口不存在");
   }catch(error){
     if(error instanceof HttpError)return result({error:error.message},error.status);
-    if(error instanceof RelationError)return result({error:error.message},error.status);
+    if(error instanceof RelationError || error instanceof PlatformError)return result({error:error.message},error.status);
     if(error instanceof MetadataError)return result({error:error.message},error.status,error.retryAt?
       {"Retry-After":String(Math.max(1,Math.ceil((error.retryAt-Date.now())/1000)))}:{});
     if(error instanceof z.ZodError)return result({error:"数据校验失败",details:error.issues.map(i=>`${i.path.join(".")}: ${i.message}`)},400);
