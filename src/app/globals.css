@@ -40,3 +40,20 @@ button.selected:hover{background:var(--accent)}
 .platform-delete{color:#a94137}.platform-add{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) auto;align-items:end;gap:12px;margin-top:24px}
 .platform-add input{width:100%;min-width:0}.platform-modal{width:530px}.platform-modal p{overflow-wrap:anywhere}
 @media(max-width:700px){.platform-add{grid-template-columns:minmax(0,1fr)}.platform-add>.primary{justify-self:start}}
+
+.steam-preview{max-width:860px}
+.steam-preview-form{display:flex;align-items:flex-end;flex-wrap:wrap;gap:12px;margin:22px 0}
+.steam-preview-form label{width:250px;max-width:100%}
+.steam-preview-results{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.steam-preview-results li{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:10px 0;border-bottom:1px solid var(--line)}
+.steam-preview-results li div{min-width:0;overflow-wrap:anywhere}
+.steam-preview-results li span{flex-shrink:0;color:var(--muted)}
+.steam-preview-results small{display:block;color:var(--muted);margin-top:3px}
+.steam-preview .pagination{margin:18px 0 0;gap:8px;flex-wrap:wrap}
+@media(max-width:700px){.sidebar nav{flex-wrap:wrap}}
+
+.description-translation{padding:13px 15px;border:1px solid var(--line);border-radius:8px;background:#fff}
+.description-translation summary{cursor:pointer;font-weight:700}
+.translation-tools{display:flex;align-items:flex-end;flex-wrap:wrap;gap:10px}
+.translation-result{margin-top:15px;padding:13px;border-radius:8px;background:#f2f5e8}
+.translation-result .preserve{max-height:180px;overflow:auto}

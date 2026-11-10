@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Container version="2">
   <Name>GameShelf</Name>
-  <Repository>jyh9521/gameshelf:0.1.9</Repository>
+  <Repository>jyh9521/gameshelf:0.1.10</Repository>
   <Registry>https://hub.docker.com/r/jyh9521/gameshelf</Registry>
   <Network>bridge</Network>
   <MyIP></MyIP>
@@ -9,7 +9,7 @@
   <Privileged>false</Privileged>
   <Support></Support>
   <Project></Project>
-  <Overview>个人游戏收藏管理。镜像 jyh9521/gameshelf:0.1.9（Linux/amd64），SteamGridDB 竖版封面可翻页，确认选图后自动收起。沿用平台编辑、资料服务变量、字段历史、作品关系与备份 v3（兼容 v1/v2）。首次初始化凭据位于持久化目录的 setup-token 文件。</Overview>
+  <Overview>个人游戏收藏管理。镜像 jyh9521/gameshelf:0.1.10（Linux/amd64），可选 Steam 游戏库只读预览与 Gemini 游戏简介翻译。沿用 SteamGridDB 封面翻页、平台编辑、字段历史、作品关系与备份 v3（兼容 v1/v2）。首次初始化凭据位于持久化目录的 setup-token 文件。</Overview>
   <Category>Productivity:</Category>
   <WebUI>http://[IP]:[PORT:3000]/</WebUI>
   <Icon></Icon>
@@ -31,6 +31,9 @@
   <Config Name="ScreenScraper 会员密码" Target="SCREENSCRAPER_PASSWORD" Default="" Mode="" Description="与会员用户名成对" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
   <Config Name="ScreenScraper 软件名" Target="SCREENSCRAPER_SOFTNAME" Default="GameShelf" Mode="" Description="如凭据绑定了软件名，填获准的名称" Type="Variable" Display="advanced" Required="false" Mask="false">GameShelf</Config>
   <Config Name="SteamGridDB API Key" Target="STEAMGRIDDB_API_KEY" Default="" Mode="" Description="仅查找竖版封面" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="Steam Web API Key" Target="STEAM_WEB_API_KEY" Default="" Mode="" Description="只读预览 Steam 游戏库；可留空" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="Gemini API Key" Target="GEMINI_API_KEY" Default="" Mode="" Description="按需翻译游戏简介；可留空" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="Gemini 模型" Target="GEMINI_MODEL" Default="" Mode="" Description="可留空使用内置稳定模型，或填可用的 Gemini 文本模型代码" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
 </Container>
 
 

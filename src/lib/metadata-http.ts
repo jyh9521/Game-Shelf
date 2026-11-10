@@ -5,12 +5,16 @@ export class MetadataError extends Error {
 }
 
 const maxBytes = 4 * 1024 * 1024;
+type HttpProvider = Provider | "steam" | "gemini";
+const labelOf = (provider: HttpProvider) =>
+  provider === "steam" ? "Steam" : provider === "gemini" ? "Gemini" : providerLabels[provider];
+
 export class ProviderHttp {
   private lastIgdbRequest = 0;
   constructor(private fetcher: typeof fetch) {}
 
-  async json(provider: Provider, url: string | URL, init: RequestInit = {}, notFound = false): Promise<unknown> {
-    const label = providerLabels[provider];
+  async json(provider: HttpProvider, url: string | URL, init: RequestInit = {}, notFound = false): Promise<unknown> {
+    const label = labelOf(provider);
     if (provider === "igdb" && new URL(url).hostname === "api.igdb.com") {
       const delay = this.lastIgdbRequest + 275 - Date.now();
       if (delay > 0) await new Promise(resolve => setTimeout(resolve, delay));
@@ -19,7 +23,7 @@ export class ProviderHttp {
     try {
       const response = await this.fetcher(url, {
         ...init, cache: "no-store", redirect: "error",
-        signal: AbortSignal.timeout(6500)
+        signal: AbortSignal.timeout(provider === "gemini" ? 30_000 : 6500)
       });
       if (!response.ok) {
         await response.body?.cancel();
@@ -57,11 +61,13 @@ export class ProviderHttp {
   }
 }
 
-export const invalidResponse = (provider: Provider) =>
-  new MetadataError(502, providerLabels[provider] + " 返回了无法识别的资料。");
+export const invalidResponse = (provider: HttpProvider) =>
+  new MetadataError(502, labelOf(provider) + " 返回了无法识别的资料。");
 
-export function upstreamError(provider: Provider, status: number, retryAfter?: string | null) {
-  const label = providerLabels[provider];
+export function upstreamError(provider: HttpProvider, status: number, retryAfter?: string | null) {
+  const label = labelOf(provider);
+  if (provider === "gemini" && status === 404)
+    return new MetadataError(502, "Gemini 模型不可用，请检查 GEMINI_MODEL 与账号可用模型。");
   if (status === 429 || (provider === "screenscraper" && status === 430)) {
     const now = Date.now();
     const parsed = retryAfter?.trim() && (/^\d+$/.test(retryAfter.trim()) ? now + Number(retryAfter) * 1000 : Date.parse(retryAfter));

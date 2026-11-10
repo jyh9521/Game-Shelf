@@ -4,6 +4,7 @@ export const statusLabels = { UNPLAYED: "未游玩", PLAYING: "游玩中", CLEAR
 export const mediaTypes = ["PHYSICAL", "DIGITAL", "OTHER", "UNKNOWN"] as const;
 export const acquisitions = ["PURCHASE", "GIFT", "FREE", "SUBSCRIPTION", "FAMILY_SHARED", "BORROWED", "OTHER", "UNKNOWN"] as const;
 export const accessStatuses = ["ACTIVE", "EXPIRED", "RETURNED", "REVOKED", "UNKNOWN"] as const;
+export const MAX_GAME_DESCRIPTION = 20000;
 export const normalize = (text: string) => text.normalize("NFKC").toLocaleLowerCase().replace(/\s+/g, " ").trim();
 const text = (max = 500) => z.string().max(max);
 export const date = text(10).refine(v => {
@@ -24,7 +25,7 @@ export const ownershipInput = z.object({
 }).strict();
 export const gameInput = z.object({
   title: text().trim().min(1), originalTitle: text().default(""), localizedTitle: text().default(""),
-  description: text(20000).default(""), developer: text().default(""), publisher: text().default(""),
+  description: text(MAX_GAME_DESCRIPTION).default(""), developer: text().default(""), publisher: text().default(""),
   genre: text().default(""), coverUrl: text(2000).refine(v => !v || /^https?:\/\//.test(v), "封面须为 http(s) 地址").default(""),
   status: z.enum(statuses).default("UNPLAYED"), rating: z.number().int().min(1).max(5).nullable().default(null),
   favorite: z.boolean().default(false), memo: text(20000).default("")

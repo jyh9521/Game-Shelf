@@ -14,6 +14,8 @@ import { createGameInput, previewInput, searchInput, unlockInput, updateGameInpu
 import { metadataService } from "@/lib/metadata-service";
 import { MetadataError } from "@/lib/metadata-http";
 import { createPlatform, platformInput, PlatformError, removePlatform, updatePlatform } from "@/lib/platform-catalog";
+import { previewSteamLibrary, steamPreviewConfigured } from "@/lib/steam-preview";
+import { geminiTranslationConfigured, translateDescription } from "@/lib/gemini-translation";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
 class HttpError extends Error { constructor(public status:number,message:string){super(message);} }
@@ -76,8 +78,18 @@ async function handle(req:NextRequest,context:{params:Promise<{path:string[]}>})
       const token=sessionToken(req);if(token)await db.session.deleteMany({where:{tokenHash:hashToken(token)}});
       return result({ok:true},200,{"Set-Cookie":cookie("",true)});
     }
-    const canManagePlatforms=user.id==="admin";
-    if(key==="catalog" && method==="GET")return result({platforms:await db.platform.findMany(),stores:await db.store.findMany(),canManagePlatforms});
+    const isAdmin=user.id==="admin";
+    if(key==="catalog" && method==="GET")return result({platforms:await db.platform.findMany(),stores:await db.store.findMany(),
+      canManagePlatforms:isAdmin,steamPreview:isAdmin?{configured:steamPreviewConfigured()}:null,
+      descriptionTranslation:isAdmin?{configured:geminiTranslationConfigured()}:null});
+    if(key==="steam/preview" && method==="POST"){
+      if(!isAdmin)throw new HttpError(403,"仅实例管理员可以预览 Steam 游戏库");
+      return result(await previewSteamLibrary(await body(req)));
+    }
+    if(key==="translations/description" && method==="POST"){
+      if(!isAdmin)throw new HttpError(403,"仅实例管理员可以使用 Gemini 翻译");
+      return result(await translateDescription(await body(req)));
+    }
     if(key==="metadata/providers" && method==="GET")return result({providers:metadataService().status()});
     if(key==="metadata/search" && method==="POST"){
       const {provider,query}=searchInput.parse(await body(req));
@@ -88,11 +100,11 @@ async function handle(req:NextRequest,context:{params:Promise<{path:string[]}>})
       return result(await metadataService().preview(user.id,provider,id,page));
     }
     if(key==="platforms" && method==="POST"){
-      if(!canManagePlatforms)throw new HttpError(403,"仅实例管理员可以管理平台");
+      if(!isAdmin)throw new HttpError(403,"仅实例管理员可以管理平台");
       return result(await createPlatform(platformInput.parse(await body(req))),201);
     }
     if(path[0]==="platforms" && path.length===2 && (method==="PUT" || method==="DELETE")){
-      if(!canManagePlatforms)throw new HttpError(403,"仅实例管理员可以管理平台");
+      if(!isAdmin)throw new HttpError(403,"仅实例管理员可以管理平台");
       return result(method==="PUT" ? await updatePlatform(path[1],platformInput.parse(await body(req))) : await removePlatform(path[1]));
     }
     if(key==="games" && method==="GET"){

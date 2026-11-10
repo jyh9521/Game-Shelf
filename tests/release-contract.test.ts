@@ -22,12 +22,12 @@ test("Linux 容器入口保持 LF，Git checkout 不引入 CRLF",()=>{
 test("所有外部服务变量在环境示例、Compose 和 Unraid 中同步，密钥不作为构建参数",()=>{
   const env=readFileSync(".env.example","utf8"), compose=readFileSync("compose.yaml","utf8"), unraid=readFileSync("unraid/gameshelf.xml","utf8");
   const dockerfile=readFileSync("Dockerfile","utf8"), dockerignore=readFileSync(".dockerignore","utf8");
-  for(const key of ["IGDB_CLIENT_ID","IGDB_CLIENT_SECRET","RAWG_API_KEY","THEGAMESDB_API_KEY","SCREENSCRAPER_DEV_ID","SCREENSCRAPER_DEV_PASSWORD","SCREENSCRAPER_USERNAME","SCREENSCRAPER_PASSWORD","SCREENSCRAPER_SOFTNAME","STEAMGRIDDB_API_KEY"]){
+  for(const key of ["IGDB_CLIENT_ID","IGDB_CLIENT_SECRET","RAWG_API_KEY","THEGAMESDB_API_KEY","SCREENSCRAPER_DEV_ID","SCREENSCRAPER_DEV_PASSWORD","SCREENSCRAPER_USERNAME","SCREENSCRAPER_PASSWORD","SCREENSCRAPER_SOFTNAME","STEAMGRIDDB_API_KEY","STEAM_WEB_API_KEY","GEMINI_API_KEY","GEMINI_MODEL"]){
     assert.ok(env.split(/\r?\n/).some(line=>line===(key+"="+(key==="SCREENSCRAPER_SOFTNAME"?"GameShelf":""))));
     assert.ok(compose.includes("      "+key+': "${'+key+":-"));
     const config=unraid.split(/\r?\n/).find(line=>line.includes('Target="'+key+'"'));
     assert.ok(config?.includes('Required="false"'));
-    assert.ok(config?.includes('Mask="'+(key==="SCREENSCRAPER_SOFTNAME"?"false":"true")+'"'));
+    assert.ok(config?.includes('Mask="'+(["SCREENSCRAPER_SOFTNAME","GEMINI_MODEL"].includes(key)?"false":"true")+'"'));
     assert.ok(!dockerfile.includes(key));
   }
   assert.ok(dockerignore.split(/\r?\n/).includes(".env*"));

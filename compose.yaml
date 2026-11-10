@@ -1,7 +1,7 @@
 services:
   gameshelf:
     # Docker Hub 公开固定版本镜像；仍保留源码构建入口。
-    image: "${GAMESHELF_IMAGE:-jyh9521/gameshelf:0.1.9}"
+    image: "${GAMESHELF_IMAGE:-jyh9521/gameshelf:0.1.10}"
     build: .
     ports:
       - "${GAMESHELF_PORT:-3000}:3000"
@@ -21,6 +21,9 @@ services:
       SCREENSCRAPER_PASSWORD: "${SCREENSCRAPER_PASSWORD:-}"
       SCREENSCRAPER_SOFTNAME: "${SCREENSCRAPER_SOFTNAME:-GameShelf}"
       STEAMGRIDDB_API_KEY: "${STEAMGRIDDB_API_KEY:-}"
+      STEAM_WEB_API_KEY: "${STEAM_WEB_API_KEY:-}"
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+      GEMINI_MODEL: "${GEMINI_MODEL:-}"
     volumes:
       - "${GAMESHELF_DATA_DIR:-./.data/docker}:/data"
     restart: unless-stopped

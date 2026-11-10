@@ -1,17 +1,19 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { statuses, statusLabels } from "@/lib/domain";
+import { MAX_GAME_DESCRIPTION, statuses, statusLabels } from "@/lib/domain";
 import { fieldLabels, lockedFields, metadataFields, metadataOf, type Metadata, type MetadataField, type Preview, type Selection } from "@/lib/metadata-domain";
 import { MetadataLookup, SourceLink } from "./metadata-lookup";
+import { DescriptionTranslation } from "./description-translation";
 
 type EditorProfile = { status: string; rating: number | null; favorite: boolean; memo: string; overridesJson: string };
 type EditorGame = Metadata & { rawgAttributed: boolean; profiles: EditorProfile[] };
 type Draft = { values: Metadata; dirty: Set<MetadataField>; staged: Partial<Record<MetadataField, { preview: Preview; before?: string }>> };
 const emptyValues = Object.fromEntries(metadataFields.map(field => [field, ""])) as Metadata;
 
-export function GameEditor({ game, ownership, error, busy, onClose, onSave }: {
+export function GameEditor({ game, ownership, error, busy, translationConfigured, onClose, onSave }: {
   game: EditorGame | null; ownership: ReactNode; error: string; busy: boolean; onClose: () => void;
+  translationConfigured: boolean | null;
   onSave: (data: FormData, selected: Selection[], manual: MetadataField[]) => void;
 }) {
   const personal = game?.profiles[0];
@@ -80,7 +82,9 @@ export function GameEditor({ game, ownership, error, busy, onClose, onSave }: {
           <label>个人评分<select name="rating" defaultValue={personal?.rating ?? ""}>
             <option value="">未评分</option>{[1, 2, 3, 4, 5].map(n => <option value={n} key={n}>{"★".repeat(n)}</option>)}
           </select></label>
-          <label className="wide">简介<textarea name="description" rows={3} maxLength={20000} value={draft.values.description} onChange={e => change("description", e.target.value)}/></label>
+          <label className="wide">简介<textarea name="description" rows={3} maxLength={MAX_GAME_DESCRIPTION} value={draft.values.description} onChange={e => change("description", e.target.value)}/></label>
+          {translationConfigured !== null && <DescriptionTranslation description={draft.values.description}
+            configured={translationConfigured} disabled={busy} onApply={text => change("description", text)}/>}
           <label className="wide">个人备注<textarea name="memo" rows={3} maxLength={20000} defaultValue={personal?.memo}/></label>
           <label className="check wide"><input name="favorite" type="checkbox" defaultChecked={personal?.favorite}/>加入我的收藏</label>
         </div>

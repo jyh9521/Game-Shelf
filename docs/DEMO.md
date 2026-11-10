@@ -1,4 +1,16 @@
-# 中间报告演示流程（2026-11-09 更新）
+# 中间报告演示流程（2026-11-10 更新）
+
+## 本周演示：Gemini 翻译游戏简介
+
+以管理员在 0.1.10 打开编辑器。在简介下展开「Gemini 翻译简介」，选语言并生成译文。观察预览出现时，编辑框和数据库仍是原文；点「采用译文」只改草稿，再点「保存游戏」，才保存为手动值。取消编辑不会改库。
+
+用 `npm run test:release` 的合成响应和截图演示，不需要提供真实密钥。部署者使用真实翻译时在容器添加 `GEMINI_API_KEY`，详见 [配置说明](GEMINI_TRANSLATION.md)。
+
+## 本周演示：Steam 游戏库只读预览
+
+先运行 `npm run build`、`npm run test:steam-preview`，在 `QA_ARTIFACTS` 中使用 `steam-preview-desktop.png`、`steam-preview-mobile.png`。合成输入返回 13 款游戏，展示名称、AppID、零/未知时长和分页。切换到无可见数据的场景，说明它不等于空库或导入失败。最后回到手动库：原作品及备份未变。
+
+本段只用隔离测试样本；真实 Steam 账号和 Unraid 验收另做。0.1.10 包含预览，0.1.9 不含。详情见 [STEAM_PREVIEW.md](STEAM_PREVIEW.md)。
 
 ## 0.1.7 演示：来源候选、手动清空与恢复
 

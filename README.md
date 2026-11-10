@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-当前版本与部署模板为 **0.1.9**。从 0.1.8 升级、镜像信息与回退方式见 [0.1.9 发布说明](docs/releases/0.1.9.md)。
+当前版本与部署模板为 **0.1.10**。从 0.1.9 升级、镜像信息与回退方式见 [0.1.10 发布说明](docs/releases/0.1.10.md)。
 
 已实现管理员初始化与登录、作品增删改、多平台拥有记录、单份发行版本编辑、载体 / 获取方式 / 访问状态筛选、排序分页、状态评分与备注、标题别名搜索，以及 JSON 备份预览与空库恢复。
 
@@ -22,9 +22,11 @@
 
 封面上传、Steam 等账号连接、后台同步、标签合集、CSV 与定时备份尚未实现。需求范围见[修订版需求书](GameShelf_开发要求书_修订版.md)。
 
+0.1.10 新增两项可选功能：[Steam 游戏库只读预览](docs/STEAM_PREVIEW.md)（不绑定或导入），以及 [Gemini 游戏简介翻译](docs/GEMINI_TRANSLATION.md)（先预览，采用并保存后才修改简介）。分别通过 `STEAM_WEB_API_KEY` 和 `GEMINI_API_KEY` 启用。
+
 ## 下载 / 部署
 
-公开镜像：[jyh9521/gameshelf](https://hub.docker.com/r/jyh9521/gameshelf)，固定版本 `jyh9521/gameshelf:0.1.9`，平台 **linux/amd64**。没有 GitHub Release 安装包。
+公开镜像：[jyh9521/gameshelf](https://hub.docker.com/r/jyh9521/gameshelf)，固定版本 `jyh9521/gameshelf:0.1.10`，平台 **linux/amd64**。没有 GitHub Release 安装包。
 
 ### Docker Compose
 
@@ -51,7 +53,7 @@ SQLite 应放在服务器本地文件系统，不直接使用 SMB / NFS / WebDAV
 
 ### Unraid
 
-使用 [unraid/gameshelf.xml](unraid/gameshelf.xml) 模板，镜像地址为 `jyh9521/gameshelf:0.1.9`。从旧容器升级时保留原挂载、端口、运行 UID/GID、代理设置和已配置的 API 变量。
+使用 [unraid/gameshelf.xml](unraid/gameshelf.xml) 模板，镜像地址为 `jyh9521/gameshelf:0.1.10`。从旧容器升级时保留原挂载、端口、运行 UID/GID、代理设置和已配置的 API 变量。
 
 默认映射 `/mnt/user/appdata/gameshelf` → `/data`，UID/GID 为 `99:100`；按实际存储池与端口调整。首次初始化凭据位于 `/mnt/user/appdata/gameshelf/setup-token`。模板未声称已收录 Unraid 应用商店，实机验收仍待完成。
 
@@ -89,6 +91,7 @@ npm run test:relations
 npm run test:metadata
 npm run test:cover-platforms
 npm run test:cover-pagination
+npm run test:steam-preview
 npm run test:release
 ```
 
@@ -98,9 +101,11 @@ npm run test:release
 
 `npm run test:metadata` 用合成供应商响应验证五个服务、游戏资料和封面确认、字段历史与解除锁定、备份 v1/v2/v3、两账号隔离及桌面 / 手机。不会调用真实供应商或使用个人凭据。
 
-`npm run test:cover-platforms` 在隔离库上检查 SteamGridDB 官方 CDN 形状、桌面 / 手机选图、平台编辑删除和备份往返。`npm run test:release` 使用独立 Docker QA 卷验证 0.1.8 → 0.1.9、旧库和会话保留、封面翻页和收起、重建和升级前快照回退。
+`npm run test:cover-platforms` 在隔离库上检查 SteamGridDB 官方 CDN 形状、桌面 / 手机选图、平台编辑删除和备份往返。`npm run test:release` 使用独立 Docker QA 卷验证 0.1.9 → 0.1.10、五个既有资料服务、Steam 预览、Gemini 译文预览与保存、容器重建和升级前快照回退。
 
 `npm run test:cover-pagination` 在隔离库和模拟 SteamGridDB 上验证翻页、空页后继续、选择后收起及末页封面保存（需要先构建应用）。
+
+`npm run test:steam-preview` 在隔离库与合成 Steam 响应上验证权限、可见清单、异常和桌面 / 手机操作，并比较预览前后的 JSON 数据。
 
 `tests/api-integration.mjs` 与 `tests/ui-smoke.mjs` 需要独立空测试库和端口 3100，包含创建、删除与恢复测试数据的操作，不用于个人实例。UI 测试使用已安装 Chrome；截图和测试备份写入忽略提交的 `engineering/`。万条数据基准只代表测试主机与样本，不等同于 Unraid 性能。
 
