@@ -1,5 +1,11 @@
 # 开发进度
 
+## 2026-11-10：0.1.10 发布，Steam 预览与 Gemini 简介翻译
+
+- 发布 `jyh9521/gameshelf:0.1.10` 和 `latest`，远程摘要均为 `sha256:c8ae6df1a86cffaefaecdb6d6c191152a92fb7eb302fd0740d8df32ed4985ece`，镜像源码为 `7731979`。已验证 0.1.9 固定标签不变。
+- 管理员按需启用 Steam 只读预览和 Gemini 简介翻译；翻译先预览、再采用、最后保存，分别通过 `STEAM_WEB_API_KEY` 和 `GEMINI_API_KEY` 配置。
+- 与旧镜像比较的五个既有资料服务及 SteamGridDB 六页返回一致。独立 Docker 升级、重建、回滚和摘要拉取复测通过；真实服务凭据和真实 Unraid 另行验收。见 [0.1.10 发布说明](releases/0.1.10.md)。
+
 ## 2026-11-10：Steam 游戏库只读预览（源码）
 
 - 实例管理员手动输入 SteamID64，预览 Steam 返回的游戏名称、AppID 和累计游玩时间；重复 AppID 折叠，零与未知时长分别显示。未配置、没有可见数据和上游失败分别提示。
