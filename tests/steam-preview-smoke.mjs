@@ -10,8 +10,11 @@ import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
 import { chromium, expect } from "@playwright/test";
 import { key, prefix } from "./steam-preview-fixture.cjs";
+import { seedComparison, checkComparison, comparisonUI } from "./steam-library-match-checks.mjs";
 
 const baseline = process.argv.includes("--baseline");
+const comparison = process.argv.includes("--comparison");
+let comparisonIds;
 const dir = resolve(process.env.STEAM_QA_DIR ?? "engineering/steam-preview-" + Date.now());
 mkdirSync(dir, { recursive: true });
 const file = name => resolve(dir, name);
@@ -79,6 +82,7 @@ try {
     await api("auth/setup", "POST", { username: "qa-demo", password, passwordConfirm: password, setupToken: token }, 201);
     await api("games", "POST", { title: "QA ローカル作品", rating: 4,
       ownership: { platformId: "PC", storeId: "STEAM", releaseDate: "2024" } }, 201);
+    if (comparison) comparisonIds = await seedComparison(async (...args) => (await api(...args)).body);
     before = snapshot((await api("backup")).body);
     await api(preview, "POST", input("01"), 401, "");
     const catalog = (await api("catalog")).body;
@@ -96,6 +100,13 @@ try {
     await db.user.create({ data: { id: "qa-member", username: "qa-member", passwordHash: "unused" } });
     await db.session.create({ data: { userId: "qa-member", tokenHash: createHash("sha256").update(memberToken).digest("hex"),
       expiresAt: new Date(Date.now() + 3600000) } });
+    if (comparison) {
+      await db.userGameProfile.create({ data: { id: "qa-private", user: { connect: { id: "qa-member" } },
+        game: { create: { id: "qa-private-game", title: "QA Steam サンプル 03", searchText: "private" } } } });
+      await db.userGameProfile.create({ data: { id: "qa-shared", userId: "qa-member", gameId: comparisonIds.single } });
+      // The shared raw title is stale; only the admin's effective aliases count.
+      await db.game.update({ where: { id: comparisonIds.single }, data: { title: "QA Steam サンプル 04" } });
+    }
     await withServer("enabled", key, async (api, base) => {
       const member = "gameshelf_session=" + memberToken;
       assert.equal((await api("catalog", "GET", undefined, 200, member)).body.steamPreview, null);
@@ -112,6 +123,7 @@ try {
       assert.equal(list.items[0].playtimeMinutes, 0);
       assert.equal(list.items[1].playtimeMinutes, null);
       assert.equal(list.items.at(-1).appid, 90013);
+      if (comparison) checkComparison(list, comparisonIds);
       for (const suffix of ["02", "03"])
         assert.deepEqual((await api(preview, "POST", input(suffix))).body, { state: "no_visible_games" });
       assert.ok(Number((await api(preview, "POST", input("04"), 429)).retryAfter) > 0);
@@ -151,15 +163,30 @@ try {
       await page.getByRole("button", { name: "预览可见游戏" }).click();
       await expect(page.getByRole("status").filter({ hasText: "没有返回可见游戏" })).toBeVisible();
       await page.locator("aside nav").getByRole("button", { name: /游戏库/ }).click();
-      await expect(page.getByRole("heading", { name: "QA ローカル作品", exact: true })).toBeVisible();
+      if (!comparison) await expect(page.getByRole("heading", { name: "QA ローカル作品", exact: true })).toBeVisible();
+      else {
+        await page.setViewportSize({ width: 1365, height: 920 });
+        await comparisonUI(page, file);
+      }
       await browser.close(); browser = null;
       assert.deepEqual(errors, []);
       assert.deepEqual(outside, []);
-      assert.deepEqual(requests(), ["01", "02", "03", "04", "05", "06", "07", "01", "02"]);
+      assert.deepEqual(requests(), ["01", "02", "03", "04", "05", "06", "07", "01", "02", ...(comparison ? ["01", "08", "01"] : [])]);
       assert.deepEqual(snapshot((await api("backup")).body), before);
-      assert.equal(await db.userGameProfile.count(), 1);
-      assert.equal(await db.libraryItem.count(), 1);
-      console.log("MODIFIED steam-preview=13 pages=2 skipped=2 upstream=9 backup=identical desktop=1365 mobile=390");
+      assert.equal(await db.userGameProfile.count(), comparison ? 32 : 1);
+      assert.equal(await db.libraryItem.count(), comparison ? 30 : 1);
+      if (comparison) {
+        // Old profiles without a metadata projection use their raw title.
+        const legacy = (await api("games", "POST", { title: "QA Steam サンプル 05", ownership: { platformId: "PC" } }, 201)).body;
+        const profile = await db.userGameProfile.findUnique({ where: { userId_gameId: { userId: "admin", gameId: legacy.id } } });
+        await db.userGameMetadata.delete({ where: { profileId: profile.id } });
+        const legacyPreview = (await api(preview, "POST", input("01"))).body;
+        assert.equal(legacyPreview.items[4].match.candidates[0].gameId, legacy.id);
+        assert.equal(legacyPreview.summary.single_candidate, 2);
+        await api("games/" + legacy.id, "DELETE");
+        console.log("COMPARISON PASS single=1 multiple=1 none=11 alias=effective isolation=pass legacy=pass backup=identical desktop=1365 mobile=390");
+      }
+      console.log("MODIFIED steam-preview=13 pages=2 skipped=2 upstream=" + requests().length + " backup=identical desktop=1365 mobile=390");
     });
   }
   console.log("HTTP_CHECKS=" + checks + " QA_ARTIFACTS=" + dir);

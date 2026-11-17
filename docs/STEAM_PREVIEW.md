@@ -4,7 +4,7 @@
 
 ## 使用
 
-1. 在 0.1.10 应用容器设置可选变量 `STEAM_WEB_API_KEY` 后重新创建容器。使用 Steam Web API 用户密钥，不是 Steam 密码、会话或 SteamGridDB 密钥。用 Compose 从源码构建时给 `GAMESHELF_IMAGE` 设置独立本地标签；不要覆盖已发布的标签。
+1. 在 0.1.10 或更新的应用容器设置可选变量 `STEAM_WEB_API_KEY` 后重新创建容器。使用 Steam Web API 用户密钥，不是 Steam 密码、会话或 SteamGridDB 密钥。用 Compose 从源码构建时给 `GAMESHELF_IMAGE` 设置独立本地标签；不要覆盖已发布的标签。
 2. 以 GameShelf 实例管理员登录，打开「Steam 预览」，输入自己的 17 位 SteamID64 并点击「预览可见游戏」。仅点击后请求 Steam。显示可见项目的名称、AppID、累计时长（零值与未知分开），包含 Steam 返回的玩过的免费游戏。列表按 AppID 排序、去重、每 12 项翻页。
 3. 如果 Steam 没有返回可见项目，可能是库为空或「游戏详情」的可见性受限。预览不绕过 Steam 的可见性；无数据与限流、错误响应分开提示。未设置密钥时手动库继续正常运行。
 
@@ -12,8 +12,22 @@ SteamID64 和预览结果不写入数据库、备份或浏览器持久存储；�
 
 接口依据：[Steamworks GetOwnedGames](https://partner.steamgames.com/doc/webapi/IPlayerService?language=english#getownedgames)、[Web API 概要](https://partner.steamgames.com/doc/webapi_overview?l=english)、[Web API 密钥](https://partner.steamgames.com/doc/webapi_overview/auth)。
 
+## 0.1.11：本地库候选对照
+
+预览会同时读取当前登录用户的完整本地库（不受游戏库分页或筛选影响），按有效的标题、原名和本地化标题寻找候选。个人资料投影优先；旧档案没有投影时才使用原作品字段，不读取其他用户的候选或拥有平台。
+
+- 区分「单候选 · 待确认」「多候选 · 待确认」「未找到候选」「缺少标题」，显示每类数量。只统一全半角、大小写及连续空白，保留标点、重音和版本词；同名不代表同一作品。
+- 一个作品的多个别名同时命中只算一个候选。显示命中字段和本人拥有平台；每款最多展示 5 个候选，并保留完整候选数及截断提示。
+- 可按 Steam 名称、AppID 或已展示候选的标题搜索，与状态筛选组合。搜索、筛选和翻页都在当前结果内进行，不重复调用 Steam；条件变化回第一页，重置清除条件。
+- 点击候选打开本地详情，关闭后保留对照条件。通过详情编辑或删除本地资料后，旧对照结果失效，需要重新预览；更换 SteamID64 也会清空旧结果。
+- 缺少 Steam 名称时，仅展示 AppID 占位符，不用占位符寻找候选。未找到名称候选不等于游戏尚未入库，单候选也不代表 Steam AppID 已确认。
+
+本轮没有建立外部身份映射、账号绑定或导入功能。Steam 的累计时长不会写回手动条目，不改评分、备注、锁定值或备份格式；JSON 仍为 v3。
+
 ## 验收与后续
 
 `npm run build` 后运行 `npm run test:steam-preview`：独立 SQLite、合成 Steam 响应、API 权限与异常、桌面和 390px 界面，预览前后比较备份。测试不访问真实 Steam；输出路径由 `QA_ARTIFACTS` 给出。
 
-真实 Steam 账号与 Unraid 尚需单独验证。下一批先核对真实库的可见性与时长，再做账号归属确认、Steam AppID 匹配、待导入清单与确认后的幂等写入。自动同步、历史和重试在导入验证之后推进。
+`npm run test:steam-matching` 额外检查别名、同名歧义、完整库跨页、用户隔离、旧档案回退、搜索筛选、详情跳转、缺少标题和零写入；`npm run test:release` 检查容器升级、编辑后的对照失效和快照回退。所有自动化上游响应均为合成样本，真实账号和设备的结果应另记。
+
+下一批计划推进 Steam 身份确认与稳定 AppID 关联，再实现用户确认后的导入和幂等更新；删除忽略、同步历史及真实账号集成测试随导入功能补齐。当前候选对照不是账号同步。

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { invalidResponse, MetadataError, ProviderHttp } from "./metadata-http";
 
-type SteamGame = { appid: number; title: string; playtimeMinutes: number | null };
+export type SteamGame = { appid: number; title: string; titleAvailable: boolean; playtimeMinutes: number | null };
 export type SteamPreview = { state: "listed"; items: SteamGame[]; skipped: number }
   | { state: "no_visible_games" };
 
@@ -27,7 +27,7 @@ export function readSteamPreview(payload: unknown): SteamPreview {
     if (!object(game) || !uint32(game.appid) || game.appid === 0 || unique.has(game.appid)) continue;
     const title = typeof game.name === "string" ? game.name.trim().slice(0, 500) : "";
     unique.set(game.appid, {
-      appid: game.appid, title: title || "AppID " + game.appid,
+      appid: game.appid, title: title || "AppID " + game.appid, titleAvailable: Boolean(title),
       playtimeMinutes: uint32(game.playtime_forever) ? game.playtime_forever : null
     });
   }

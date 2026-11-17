@@ -26,6 +26,7 @@ if (process.env.GAMESHELF_QA_STEAM_LOG) globalThis.fetch = async (input, init) =
   if (suffix === "05") return new Response(key, { status: 403 });
   if (suffix === "06") return Response.json({ response: { game_count: 2 } });
   if (suffix === "07") throw new DOMException(key, "TimeoutError");
+  if (suffix === "08") return Response.json({ response: { game_count: 1, games: [{ appid: 90050 }] } });
   assert.equal(suffix, "01");
   const games = Array.from({ length: 13 }, (_, i) => ({
     appid: 90001 + i, name: "QA Steam サンプル " + String(i + 1).padStart(2, "0"),

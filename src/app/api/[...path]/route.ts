@@ -15,6 +15,7 @@ import { metadataService } from "@/lib/metadata-service";
 import { MetadataError } from "@/lib/metadata-http";
 import { createPlatform, platformInput, PlatformError, removePlatform, updatePlatform } from "@/lib/platform-catalog";
 import { previewSteamLibrary, steamPreviewConfigured } from "@/lib/steam-preview";
+import { compareSteamLibraryForUser } from "@/lib/steam-library-service";
 import { geminiTranslationConfigured, translateDescription } from "@/lib/gemini-translation";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
@@ -84,7 +85,7 @@ async function handle(req:NextRequest,context:{params:Promise<{path:string[]}>})
       descriptionTranslation:isAdmin?{configured:geminiTranslationConfigured()}:null});
     if(key==="steam/preview" && method==="POST"){
       if(!isAdmin)throw new HttpError(403,"仅实例管理员可以预览 Steam 游戏库");
-      return result(await previewSteamLibrary(await body(req)));
+      return result(await compareSteamLibraryForUser(user.id, await previewSteamLibrary(await body(req))));
     }
     if(key==="translations/description" && method==="POST"){
       if(!isAdmin)throw new HttpError(403,"仅实例管理员可以使用 Gemini 翻译");

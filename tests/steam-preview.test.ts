@@ -20,8 +20,8 @@ test("Steam 预览按 AppID 去重，保留零时长并区分未知时长", () =
     { appid: 0x100000000 }, null
   ] } });
   assert.deepEqual(result, { state: "listed", items: [
-    { appid: 5, title: "AppID 5", playtimeMinutes: null },
-    { appid: 20, title: "寒星", playtimeMinutes: 0 }
+    { appid: 5, title: "AppID 5", titleAvailable: false, playtimeMinutes: null },
+    { appid: 20, title: "寒星", titleAvailable: true, playtimeMinutes: 0 }
   ], skipped: 3 });
 });
 

@@ -45,11 +45,17 @@ button.selected:hover{background:var(--accent)}
 .steam-preview-form{display:flex;align-items:flex-end;flex-wrap:wrap;gap:12px;margin:22px 0}
 .steam-preview-form label{width:250px;max-width:100%}
 .steam-preview-results{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
-.steam-preview-results li{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:10px 0;border-bottom:1px solid var(--line)}
+.steam-preview-results li{display:grid;gap:12px;padding:16px 0;border-bottom:1px solid var(--line)}
 .steam-preview-results li div{min-width:0;overflow-wrap:anywhere}
 .steam-preview-results li span{flex-shrink:0;color:var(--muted)}
 .steam-preview-results small{display:block;color:var(--muted);margin-top:3px}
 .steam-preview .pagination{margin:18px 0 0;gap:8px;flex-wrap:wrap}
+.steam-game-heading{display:flex;justify-content:space-between;align-items:center;gap:16px}
+.steam-game-heading>span{font-size:12px}.steam-match{padding:12px;background:#f5f7ef;border-radius:9px}
+.steam-match-state{font-size:12px}.steam-candidate{padding-top:10px}.steam-candidate button{max-width:100%;text-align:left;overflow-wrap:anywhere;font-size:12px}
+.steam-match-notice{line-height:1.8}.steam-match-filters{margin:20px 0 14px}.steam-match-filters .filter-choices{max-height:none}
+.steam-match-search{display:flex;align-items:flex-end;flex-wrap:wrap;gap:10px}.steam-match-search label{flex:1;min-width:180px}
+.steam-match-search input{width:100%;min-width:0}.steam-match-search>button{font-size:12px}
 @media(max-width:700px){.sidebar nav{flex-wrap:wrap}}
 
 .description-translation{padding:13px 15px;border:1px solid var(--line);border-radius:8px;background:#fff}
