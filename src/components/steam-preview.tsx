@@ -5,12 +5,14 @@ import { api } from "@/lib/client-api";
 import { filterSteamComparisons, matchLabels, matchStates, titleFieldLabels,
   type MatchState, type SteamComparison } from "@/lib/steam-library-match";
 
+import { SteamImport } from "./steam-import";
+
 const pageSize = 12;
 const playtime = (minutes: number | null) =>
   minutes === null ? "时长未知" : minutes < 60 ? minutes + " 分钟" : (minutes / 60).toFixed(1) + " 小时";
 
-export function SteamLibraryPreview({ configured, disabled, libraryRevision, onOpen }: {
-  configured: boolean; disabled: boolean; libraryRevision: number; onOpen: (id: string) => void
+export function SteamLibraryPreview({ configured, disabled, libraryRevision, onOpen, onImported }: {
+  configured: boolean; disabled: boolean; libraryRevision: number; onOpen: (id: string) => void; onImported: () => Promise<void>
 }) {
   const [steamId, setSteamId] = useState("");
   const [result, setResult] = useState<SteamComparison | null>(null);
@@ -48,6 +50,7 @@ export function SteamLibraryPreview({ configured, disabled, libraryRevision, onO
       <h1>Steam 游戏库预览</h1>
       <p>查看 Steam 可见游戏，与自己的本地库进行只读候选对照。</p>
     </div></section>
+    <SteamImport configured={configured} libraryRevision={libraryRevision} onImported={onImported} onOpen={onOpen}/>
     <section className="panel steam-preview" aria-label="查询可见游戏">
       <h2>查询可见游戏</h2>
       <p>仅在提交时向 Steam 查询。预览不会绑定账号、导入游戏或更改本地库。</p>

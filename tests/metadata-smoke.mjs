@@ -286,12 +286,12 @@ try {
     const manual = await get("games", change({ title: "QA API 失败后仍可手填", ownership: own }, 201));
     assert.equal(manual.title, "QA API 失败后仍可手填");
     const v3 = await get("backup");
-    assert.equal(v3.schema_version, 3);
+    assert.equal(v3.schema_version, 4);
     assert.ok(v3.fieldHistory.some(e => e.action === "UNLOCK" && e.field === "description"));
     assert.ok(v3.fieldHistory.some(e => e.field === "coverUrl" && e.source?.provider === "steamgriddb"));
     assert.doesNotMatch(JSON.stringify(v3), /另一账户私有标题|其他用户私有作品|passwordHash|tokenHash|userId/);
     for (const p of Object.values(previews)) assert.ok(!JSON.stringify(v3).includes(p.token));
-    writeFileSync(file("demo-backup-v3.json"), JSON.stringify(v3, null, 2));
+    writeFileSync(file("demo-backup-v4.json"), JSON.stringify(v3, null, 2));
 
     const restoreEnv = makeEnv("restore", false);
     migrate(restoreEnv, schema, "restore-migrate.log");
@@ -332,7 +332,7 @@ try {
     const used = readFileSync(upgradeEnv.GAMESHELF_QA_PROVIDER_LOG, "utf8");
     for (const host of ["api.igdb.com", "api.rawg.io", "api.thegamesdb.net", "api.screenscraper.fr", "www.steamgriddb.com"]) assert.ok(used.includes(host));
     assert.equal(hash(readFileSync(upgradeEnv.SETUP_TOKEN_FILE)), hash(token));
-    console.log("MODIFIED PASS HTTP=" + checks + "; providers=5-fixtures; cover=portrait; locks=preserved,cleared,unlocked; isolation=pass; backup=v1,v2,v3; UI=desktop,390px; credential-leaks=0");
+    console.log("MODIFIED PASS HTTP=" + checks + "; providers=5-fixtures; cover=portrait; locks=preserved,cleared,unlocked; isolation=pass; backup=v1,v2,v3/v4; UI=desktop,390px; credential-leaks=0");
   }
   console.log("QA_ARTIFACTS=" + dir);
 } finally {

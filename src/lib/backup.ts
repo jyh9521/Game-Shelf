@@ -5,6 +5,7 @@ import { hashToken } from "./auth";
 import { relationRecord, relationEventRecord, validateRelationGraph, validateRelationHistory } from "./relation-domain";
 import { encodeLocks, fieldEventRecord, fieldValue, lockedFields, metadataFields, metadataOf, searchTextOf, validateFieldHistory, type MetadataField } from "./metadata-domain";
 import { fieldEventData, serializeFieldEvent } from "./game-metadata";
+import { steamLinkRecord } from "./steam-import-domain";
 const id = z.string().min(1).max(100);
 const timestamp = z.iso.datetime();
 const nullableSeconds = z.number().int().min(0).max(2147483647).nullable();
@@ -39,7 +40,9 @@ const v3Profile = backupV1.shape.profiles.element.extend({
 });
 const backupV3 = backupV2.extend({
   schema_version: z.literal(3), fieldHistory: z.array(fieldEventRecord).max(300000), profiles: z.array(v3Profile).max(100000)
-}).strict().superRefine((b, ctx) => {
+}).strict();
+const backupV4 = backupV3.extend({schema_version:z.literal(4),steamLinks:z.array(steamLinkRecord).max(300000)}).strict();
+function validateLocks(b: z.infer<typeof backupV3> | z.infer<typeof backupV4>, ctx: z.RefinementCtx) {
   const games = new Map(b.games.map(game => [game.id, game]));
   for (const [index, profile] of b.profiles.entries()) {
     const game = games.get(profile.gameId);
@@ -49,18 +52,20 @@ const backupV3 = backupV2.extend({
       ctx.addIssue({ code: "custom", path: ["profiles", index, "overridesJson"], message: "锁定值与作品资料不一致" });
     }
   }
-});
-// v1/v2 have no external candidate or field history. Preserve the old
-// overrides string until the old restore fingerprints have been checked.
-export const backupSchema = z.discriminatedUnion("schema_version", [backupV1, backupV2, backupV3]).transform(b => {
-  if (b.schema_version === 3) return b;
-  if (b.schema_version === 2) return { ...b, schema_version: 3 as const, fieldHistory: [] };
-  return { ...b, schema_version: 3 as const, relations: [], relationHistory: [], fieldHistory: [] };
-});
+}
+// Old versions gain empty link data; no backup can restore account authentication.
+export const backupSchema = z.discriminatedUnion("schema_version", [backupV1, backupV2, backupV3, backupV4])
+  .superRefine((b, ctx) => { if (b.schema_version >= 3) validateLocks(b as z.infer<typeof backupV3> | z.infer<typeof backupV4>, ctx); })
+  .transform(b => {
+    if (b.schema_version === 4) return b;
+    if (b.schema_version === 3) return { ...b, schema_version: 4 as const, steamLinks: [] };
+    if (b.schema_version === 2) return { ...b, schema_version: 4 as const, fieldHistory: [], steamLinks: [] };
+    return { ...b, schema_version: 4 as const, relations: [], relationHistory: [], fieldHistory: [], steamLinks: [] };
+  });
 export type Backup = z.infer<typeof backupSchema>;
 export function validateReferences(b: Backup) {
   const sets = new Map<string, Set<string>>();
-  for (const name of ["platforms","stores","games","releases","editions","items","contents","profiles","relations","relationHistory","fieldHistory"] as const) {
+  for (const name of ["platforms","stores","games","releases","editions","items","contents","profiles","relations","relationHistory","fieldHistory","steamLinks"] as const) {
     const ids = b[name].map(v=>v.id);
     if (new Set(ids).size!==ids.length) throw new Error(`${name} 存在重复 ID`);
     sets.set(name,new Set(ids));
@@ -91,6 +96,16 @@ export function validateReferences(b: Backup) {
       if (!profiles.has(gameId)) throw new Error("作品关系缺少个人档案");
     }
   }
+  const steamKeys = new Set<string>();
+  for (const link of b.steamLinks) {
+    ref("games",link.gameId); ref("items",link.libraryItemId);
+    if (!profiles.has(link.gameId)) throw new Error("Steam 关联缺少个人档案");
+    const key = JSON.stringify([link.steamId,link.appid]);
+    if (steamKeys.has(key)) throw new Error("Steam AppID 关联重复");
+    steamKeys.add(key);
+    if (!b.contents.some(c => c.libraryItemId === link.libraryItemId && releaseMap.get(c.releaseId) === link.gameId))
+      throw new Error("Steam 关联缺少对应拥有内容");
+  }
   validateRelationGraph(b.relations);
   validateRelationHistory(b.relations, b.relationHistory);
   validateFieldHistory(b.fieldHistory, new Map(b.games.map(g => [g.id, g])), new Map(b.profiles.map(p => [p.gameId, p.overridesJson])));
@@ -112,7 +127,7 @@ export async function exportBackup(userId: string): Promise<Backup> {
     const profilesByGame = new Map(profiles.map(p => [p.gameId, p]));
     const gamesById = new Map(games.map(g => [g.id, g]));
     const gamesByProfile = new Map(profiles.map(p => [p.id, p.gameId]));
-    return backupSchema.parse({format:"gameshelf",schema_version:3,exportedAt:new Date().toISOString(),
+    return backupSchema.parse({format:"gameshelf",schema_version:4,exportedAt:new Date().toISOString(),
       platforms:await tx.platform.findMany(),stores:await tx.store.findMany(),
       games:games.map(g=>{
         const effective = profilesByGame.get(g.id)?.metadata ?? g;
@@ -124,6 +139,7 @@ export async function exportBackup(userId: string): Promise<Backup> {
       })),
       relations:relations.map(({userId,...r})=>({...r,createdAt:r.createdAt.toISOString(),updatedAt:r.updatedAt.toISOString()})),
       relationHistory:relationHistory.map(({userId,...e})=>({...e,createdAt:e.createdAt.toISOString()})),
+      steamLinks:(await tx.steamImportLink.findMany({where:{userId}})).map(({userId,...link})=>({...link,appid:Number(link.appid),createdAt:link.createdAt.toISOString()})),
       fieldHistory:history.map(e => serializeFieldEvent(e, gamesByProfile.get(e.profileId)!))});
   });
 }
@@ -137,8 +153,10 @@ export async function restoreBackup(b: Backup,userId:string) {
   };
   const importId=hashToken(userId+JSON.stringify(canonical({...b,exportedAt:""})));
   const compatibleIds = [importId];
-  if (!b.fieldHistory.length) {
-    const { fieldHistory, ...v2 } = b;
+  const { steamLinks, ...v3 } = b;
+  if (!steamLinks.length) compatibleIds.push(hashToken(userId+JSON.stringify(canonical({...v3,schema_version:3,exportedAt:""}))));
+  if (!steamLinks.length && !b.fieldHistory.length) {
+    const { fieldHistory, ...v2 } = v3;
     compatibleIds.push(hashToken(userId+JSON.stringify(canonical({...v2,schema_version:2,exportedAt:""}))));
     if (!v2.relations.length && !v2.relationHistory.length) {
       const { relations, relationHistory, ...v1 } = v2;
@@ -172,6 +190,7 @@ export async function restoreBackup(b: Backup,userId:string) {
     await tx.profileFieldHistory.createMany({ data: b.fieldHistory.map(e => fieldEventData(e, profiles.get(e.gameId)!)) });
     await tx.gameRelation.createMany({data:b.relations.map(r=>({...r,userId}))});
     await tx.gameRelationEvent.createMany({data:b.relationHistory.map(e=>({...e,userId}))});
+    await tx.steamImportLink.createMany({data:b.steamLinks.map(link=>({...link,appid:BigInt(link.appid),userId}))});
     await tx.backupImport.create({data:{id:importId,userId}});
     return {duplicate:false,games:b.games.length,items:b.items.length,relations:b.relations.length};
   },{timeout:30000});

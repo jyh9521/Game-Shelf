@@ -17,6 +17,9 @@ model User {
   imports      BackupImport[]
   gameRelations GameRelation[]
   relationEvents GameRelationEvent[]
+  steamAccount SteamAccount?
+  steamAuthAttempts SteamAuthAttempt[]
+  steamPreviews SteamImportPreview[]
 }
 
 model Session {
@@ -105,6 +108,7 @@ model LibraryItem {
   user User @relation(fields: [userId], references: [id])
   store Store? @relation(fields: [storeId], references: [id])
   contents LibraryItemContent[]
+  steamLinks SteamImportLink[]
   @@index([userId, createdAt])
 }
 
@@ -131,6 +135,7 @@ model UserGameProfile {
   user User @relation(fields: [userId], references: [id])
   game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
   metadata UserGameMetadata?
+  steamLinks SteamImportLink[]
   @@unique([userId, gameId])
   @@index([userId, status])
 }
@@ -217,4 +222,45 @@ model GameRelationEvent {
   @@unique([userId, relationId, revision])
   @@index([userId, sourceGameId, createdAt])
   @@index([userId, targetGameId, createdAt])
+}
+
+// Authentication is not portable backup data. Reverify after JSON restore.
+model SteamAccount {
+  userId String @id
+  steamId String
+  verifiedAt DateTime
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+model SteamAuthAttempt {
+  stateHash String @id
+  userId String
+  sessionHash String
+  returnTo String
+  expiresAt DateTime
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+  @@index([expiresAt])
+}
+model SteamImportPreview {
+  tokenHash String @id
+  userId String
+  steamId String
+  payloadJson String
+  expiresAt DateTime
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+  @@index([expiresAt])
+}
+model SteamImportLink {
+  id String @id
+  userId String
+  steamId String
+  appid BigInt
+  gameId String
+  libraryItemId String
+  createdAt DateTime @default(now())
+  profile UserGameProfile @relation(fields: [userId, gameId], references: [userId, gameId], onDelete: Cascade)
+  item LibraryItem @relation(fields: [libraryItemId], references: [id], onDelete: Cascade)
+  @@unique([userId, steamId, appid])
+  @@index([libraryItemId])
 }

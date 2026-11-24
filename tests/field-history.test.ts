@@ -81,7 +81,7 @@ test("v2 保留旧手动锁定但不推测来源；v3 必须显式包含历史",
     relations: [], relationHistory: [] };
   const v3 = backupSchema.parse(record);
   validateReferences(v3);
-  assert.deepEqual(v3.fieldHistory, []); assert.equal(v3.schema_version, 3);
+  assert.deepEqual(v3.fieldHistory, []); assert.equal(v3.schema_version, 4);
   assert.deepEqual([...lockedFields(v3.profiles[0].overridesJson)], ["title", "description"]);
   assert.equal(backupSchema.safeParse({ ...record, schema_version: 3 }).success, false);
   assert.equal(backupSchema.safeParse({ ...record, fieldHistory: [] }).success, false);

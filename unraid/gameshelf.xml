@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Container version="2">
   <Name>GameShelf</Name>
-  <Repository>jyh9521/gameshelf:0.1.11</Repository>
+  <Repository>jyh9521/gameshelf:0.1.12</Repository>
   <Registry>https://hub.docker.com/r/jyh9521/gameshelf</Registry>
   <Network>bridge</Network>
   <MyIP></MyIP>
@@ -9,7 +9,7 @@
   <Privileged>false</Privileged>
   <Support></Support>
   <Project></Project>
-  <Overview>个人游戏收藏管理。镜像 jyh9521/gameshelf:0.1.11（Linux/amd64），可选 Steam 游戏库只读预览与 Gemini 游戏简介翻译。沿用 SteamGridDB 封面翻页、平台编辑、字段历史、作品关系与备份 v3（兼容 v1/v2）。首次初始化凭据位于持久化目录的 setup-token 文件。</Overview>
+  <Overview>个人游戏收藏管理。镜像 jyh9521/gameshelf:0.1.12（Linux/amd64），可选 Steam 游戏库只读预览与 Gemini 游戏简介翻译。沿用 SteamGridDB 封面翻页、平台编辑、字段历史、作品关系与备份 v3（兼容 v1/v2）。首次初始化凭据位于持久化目录的 setup-token 文件。</Overview>
   <Category>Productivity:</Category>
   <WebUI>http://[IP]:[PORT:3000]/</WebUI>
   <Icon></Icon>

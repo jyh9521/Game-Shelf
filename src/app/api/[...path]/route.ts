@@ -17,6 +17,8 @@ import { createPlatform, platformInput, PlatformError, removePlatform, updatePla
 import { previewSteamLibrary, steamPreviewConfigured } from "@/lib/steam-preview";
 import { compareSteamLibraryForUser } from "@/lib/steam-library-service";
 import { geminiTranslationConfigured, translateDescription } from "@/lib/gemini-translation";
+import { steamAccount, startSteamConnection, completeSteamConnection, disconnectSteam } from "@/lib/steam-account";
+import { prepareSteamImport, importSteamGames } from "@/lib/steam-import";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
 class HttpError extends Error { constructor(public status:number,message:string){super(message);} }
@@ -86,6 +88,15 @@ async function handle(req:NextRequest,context:{params:Promise<{path:string[]}>})
     if(key==="steam/preview" && method==="POST"){
       if(!isAdmin)throw new HttpError(403,"仅实例管理员可以预览 Steam 游戏库");
       return result(await compareSteamLibraryForUser(user.id, await previewSteamLibrary(await body(req))));
+    }
+    if(key.startsWith("steam/") && key !== "steam/preview") {
+      if(!isAdmin)throw new HttpError(403,"仅实例管理员可以连接和导入 Steam 游戏库");
+      if(key==="steam/account" && method==="GET")return result({account:await steamAccount(user.id)});
+      if(key==="steam/account/start" && method==="POST")return result(await startSteamConnection(user.id,sessionToken(req)!));
+      if(key==="steam/account/complete" && method==="POST")return result(await completeSteamConnection(user.id,sessionToken(req)!,await body(req)));
+      if(key==="steam/account" && method==="DELETE")return result(await disconnectSteam(user.id));
+      if(key==="steam/import/preview" && method==="POST")return result(await prepareSteamImport(user.id));
+      if(key==="steam/import" && method==="POST")return result(await importSteamGames(user.id,await body(req)));
     }
     if(key==="translations/description" && method==="POST"){
       if(!isAdmin)throw new HttpError(403,"仅实例管理员可以使用 Gemini 翻译");
@@ -175,7 +186,7 @@ async function handle(req:NextRequest,context:{params:Promise<{path:string[]}>})
     if(key==="backup/preview" && method==="POST"){
       const raw=await body(req),b=backupSchema.parse(raw);validateReferences(b);
       return result({games:b.games.length,items:b.items.length,relations:b.relations.length,relationHistory:b.relationHistory.length,
-        fieldHistory:b.fieldHistory.length,schemaVersion:b.schema_version,migratedFrom:raw.schema_version===3?null:raw.schema_version,empty:await db.game.count()===0});
+        steamLinks:b.steamLinks.length,fieldHistory:b.fieldHistory.length,schemaVersion:b.schema_version,migratedFrom:raw.schema_version===4?null:raw.schema_version,empty:await db.game.count()===0});
     }
     if(key==="backup/restore" && method==="POST")return result(await restoreBackup(backupSchema.parse(await body(req)),user.id));
     throw new HttpError(404,"接口不存在");

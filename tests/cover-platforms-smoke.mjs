@@ -195,12 +195,12 @@ try {
     assert.deepEqual(errors, []); assert.deepEqual(outside, []);
 
     const backup = await api("backup");
-    assert.equal(backup.schema_version, 3);
+    assert.equal(backup.schema_version, 4);
     await api("backup/preview", "POST", backup);
     await api(gamePath, "DELETE");
     await api("backup/restore", "POST", backup);
     assert.deepEqual(stable(await api("backup")), stable(backup));
-    console.log("MODIFIED PASS HTTP=" + checks + " Zelda-21202-cover=selected-and-saved platform-code=editable cascade=preserved delete=unused-only permissions=pass backup=v3 UI=desktop,390px");
+    console.log("MODIFIED PASS HTTP=" + checks + " Zelda-21202-cover=selected-and-saved platform-code=editable cascade=preserved delete=unused-only permissions=pass backup=v4 UI=desktop,390px");
   }
   console.log("QA_ARTIFACTS=" + dir);
 } finally {

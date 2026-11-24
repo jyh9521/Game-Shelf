@@ -29,11 +29,11 @@ test("关系拒绝自身、重复方向、反向及间接循环", () => {
 });
 test("v1 无损迁移到 v3，不推测同名作品关系或来源", () => {
   const migrated = backupSchema.parse(legacy);
-  assert.equal(migrated.schema_version, 3); assert.deepEqual(migrated.relations, []); assert.deepEqual(migrated.relationHistory, []); assert.deepEqual(migrated.fieldHistory, []);
+  assert.equal(migrated.schema_version, 4); assert.deepEqual(migrated.relations, []); assert.deepEqual(migrated.relationHistory, []); assert.deepEqual(migrated.fieldHistory, []);
   assert.deepEqual(migrated.games.map(g => g.id), ["original", "remake"]); validateReferences(migrated);
 });
 test("v2 要求显式关系和历史，拒绝未知字段与未来版本", () => {
-  for (const bad of [{ ...legacy, schema_version: 2 }, { ...current(), schema_version: 4 }, { ...current(), token: "secret" }, { ...current(), relations: [{ ...relation, userId: "other" }] }]) {
+  for (const bad of [{ ...legacy, schema_version: 2 }, { ...current(), schema_version: 99 }, { ...current(), token: "secret" }, { ...current(), relations: [{ ...relation, userId: "other" }] }]) {
     assert.equal(backupSchema.safeParse(bad).success, false);
   }
   validateReferences(current());

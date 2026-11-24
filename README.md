@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-当前版本与部署模板为 **0.1.11**。从 0.1.10 升级、镜像信息与回退方式见 [0.1.11 发布说明](docs/releases/0.1.11.md)。
+当前版本与部署模板为 **0.1.12**。从 0.1.11 升级、镜像信息与回退方式见 [0.1.12 发布说明](docs/releases/0.1.12.md)。
 
 已实现管理员初始化与登录、作品增删改、多平台拥有记录、单份发行版本编辑、载体 / 获取方式 / 访问状态筛选、排序分页、状态评分与备注、标题别名搜索，以及 JSON 备份预览与空库恢复。
 
@@ -20,15 +20,17 @@
 
 生产构建、HTTP 接口、桌面 / 手机浏览器和 Docker Desktop Linux/amd64 容器已有验证记录；容器重建后的持久化与 UID/GID 99:100 写库已验证。**真实 Unraid 设备仍待验收。**
 
-封面上传、Steam 等账号连接、后台同步、标签合集、CSV 与定时备份尚未实现。需求范围见[修订版需求书](GameShelf_开发要求书_修订版.md)。
+封面上传、其他平台账号连接、后台同步、标签合集、CSV 与定时备份尚未实现。需求范围见[修订版需求书](GameShelf_开发要求书_修订版.md)。
 
 0.1.10 新增两项可选功能：[Steam 游戏库只读预览](docs/STEAM_PREVIEW.md)（不绑定或导入），以及 [Gemini 游戏简介翻译](docs/GEMINI_TRANSLATION.md)（先预览，采用并保存后才修改简介）。分别通过 `STEAM_WEB_API_KEY` 和 `GEMINI_API_KEY` 启用。
 
 0.1.11 在 Steam 预览中新增**本地库候选对照**：按本人标题 / 原名 / 本地化标题寻找待确认候选，展示同名歧义，支持搜索、状态筛选与打开详情；不按名称自动合并或导入。同步将 Next.js 固定升级为 16.4.6。
 
+0.1.12 新增 [Steam 账号验证与确认导入](docs/STEAM_IMPORT.md)：通过官方登录验证账号，选择新建或本人已有作品，按账号 / AppID 防止重复导入；不覆盖个人字段。备份升级 v4；添加连接需要的 `APP_URL` 配置，原只读预览保留。
+
 ## 下载 / 部署
 
-公开镜像：[jyh9521/gameshelf](https://hub.docker.com/r/jyh9521/gameshelf)，固定版本 `jyh9521/gameshelf:0.1.11`，平台 **linux/amd64**。没有 GitHub Release 安装包。
+公开镜像：[jyh9521/gameshelf](https://hub.docker.com/r/jyh9521/gameshelf)，固定版本 `jyh9521/gameshelf:0.1.12`，平台 **linux/amd64**。没有 GitHub Release 安装包。
 
 ### Docker Compose
 
@@ -55,7 +57,7 @@ SQLite 应放在服务器本地文件系统，不直接使用 SMB / NFS / WebDAV
 
 ### Unraid
 
-使用 [unraid/gameshelf.xml](unraid/gameshelf.xml) 模板，镜像地址为 `jyh9521/gameshelf:0.1.11`。从旧容器升级时保留原挂载、端口、运行 UID/GID、代理设置和已配置的 API 变量。
+使用 [unraid/gameshelf.xml](unraid/gameshelf.xml) 模板，镜像地址为 `jyh9521/gameshelf:0.1.12`。从旧容器升级时保留原挂载、端口、运行 UID/GID、代理设置和已配置的 API 变量。
 
 默认映射 `/mnt/user/appdata/gameshelf` → `/data`，UID/GID 为 `99:100`；按实际存储池与端口调整。首次初始化凭据位于 `/mnt/user/appdata/gameshelf/setup-token`。模板未声称已收录 Unraid 应用商店，实机验收仍待完成。
 
@@ -63,7 +65,7 @@ SQLite 应放在服务器本地文件系统，不直接使用 SMB / NFS / WebDAV
 
 ## 备份与恢复
 
-“备份与恢复”页面可导出 JSON，包含作品关系、判定历史、时长、手动锁定和字段来源历史，不包含 API 密钥、密码、会话或初始化凭据；封面仅备份 URL。当前源码导出 v3，旧 v1/v2 导入不生成字段候选，预览会显示迁移提示。已发布的 0.1.6 导出 v2；回退使用升级前数据库与配置快照。
+“备份与恢复”页面可导出 JSON，包含作品关系、判定历史、时长、手动锁定和字段来源历史，不包含 API 密钥、密码、会话或初始化凭据；封面仅备份 URL。当前源码导出 v4，携带 Steam 稳定关联但不携带账号验证状态；恢复后需要重新验证 Steam 账号。旧 v1/v2/v3 均可导入，v1/v2 不生成字段候选，预览会显示迁移提示。已发布的 0.1.6 导出 v2；回退使用升级前数据库与配置快照。
 
 恢复只允许空库：先预览，再确认导入；格式、版本、引用与重复身份校验通过后事务写入，失败不写入。当前上传上限为 10 MiB，没有自动合并或覆盖已有库的模式。
 
@@ -95,6 +97,7 @@ npm run test:cover-platforms
 npm run test:cover-pagination
 npm run test:steam-preview
 npm run test:steam-matching
+npm run test:steam-import
 npm run test:release
 ```
 
@@ -104,13 +107,15 @@ npm run test:release
 
 `npm run test:metadata` 用合成供应商响应验证五个服务、游戏资料和封面确认、字段历史与解除锁定、备份 v1/v2/v3、两账号隔离及桌面 / 手机。不会调用真实供应商或使用个人凭据。
 
-`npm run test:cover-platforms` 在隔离库上检查 SteamGridDB 官方 CDN 形状、桌面 / 手机选图、平台编辑删除和备份往返。`npm run test:release` 使用独立 Docker QA 卷验证 0.1.10 → 0.1.11、五个既有资料服务、Steam 候选对照和编辑失效、Gemini 译文预览与保存、容器重建和升级前快照回退。
+`npm run test:cover-platforms` 在隔离库上检查 SteamGridDB 官方 CDN 形状、桌面 / 手机选图、平台编辑删除和备份往返。`npm run test:release` 使用独立 Docker QA 卷验证 0.1.11 → 0.1.12、五个既有资料服务、Steam 候选对照和编辑失效、Gemini 译文预览与保存、容器重建和升级前快照回退。
 
 `npm run test:cover-pagination` 在隔离库和模拟 SteamGridDB 上验证翻页、空页后继续、选择后收起及末页封面保存（需要先构建应用）。
 
 `npm run test:steam-preview` 在隔离库与合成 Steam 响应上验证权限、可见清单、异常和桌面 / 手机操作，并比较预览前后的 JSON 数据。
 
 `npm run test:steam-matching` 在 Steam 预览测试上增加标题别名、同名多候选、跨页、权限隔离、旧档案、桌面 / 手机搜索筛选和详情跳转，验证对照不写库。
+
+`npm run test:steam-import` 验证身份 / 会话 / 重放、确认导入、重复与并发、个人字段保护、跨页选择、桌面 / 手机以及 v4 空库恢复；使用独立数据库与合成 Steam 响应。
 
 `tests/api-integration.mjs` 与 `tests/ui-smoke.mjs` 需要独立空测试库和端口 3100，包含创建、删除与恢复测试数据的操作，不用于个人实例。UI 测试使用已安装 Chrome；截图和测试备份写入忽略提交的 `engineering/`。万条数据基准只代表测试主机与样本，不等同于 Unraid 性能。
 

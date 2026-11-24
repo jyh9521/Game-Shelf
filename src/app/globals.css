@@ -63,3 +63,6 @@ button.selected:hover{background:var(--accent)}
 .translation-tools{display:flex;align-items:flex-end;flex-wrap:wrap;gap:10px}
 .translation-result{margin-top:15px;padding:13px;border-radius:8px;background:#f2f5e8}
 .translation-result .preserve{max-height:180px;overflow:auto}
+.steam-preview-results li{grid-template-columns:minmax(0,1fr);min-width:0}
+.steam-preview-results label,.steam-preview-results select{min-width:0;width:100%}
+.steam-preview-results strong,.steam-preview p{overflow-wrap:anywhere}

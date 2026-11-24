@@ -1,6 +1,6 @@
 {
   "name": "gameshelf",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "private": true,
   "scripts": {
     "dev": "next dev --hostname 127.0.0.1",
@@ -16,8 +16,9 @@
     "test:cover-platforms": "node tests/cover-platforms-smoke.mjs",
     "test:cover-pagination": "node tests/cover-pagination-smoke.mjs",
     "test:steam-preview": "node tests/steam-preview-smoke.mjs",
-    "test:release": "node tests/release-0.1.11.mjs",
-    "test:steam-matching": "node tests/steam-preview-smoke.mjs --comparison"
+    "test:release": "node tests/release-0.1.12.mjs",
+    "test:steam-matching": "node tests/steam-preview-smoke.mjs --comparison",
+    "test:steam-import": "node tests/steam-import-smoke.mjs"
   },
   "dependencies": {
     "@prisma/client": "6.19.3",
@@ -36,6 +37,9 @@
     "typescript": "^5.9.0"
   },
   "overrides": {
-    "deepmerge-ts": "^8.0.0"
+    "deepmerge-ts": "^8.0.0",
+    "@prisma/config": {
+      "effect": "3.22.1"
+    }
   }
 }
